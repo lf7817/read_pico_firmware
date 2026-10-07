@@ -89,7 +89,7 @@ The function menu lists pages in the order defined in
 | Font | Select TTF files from the card, preview typesetting and cycle font weight |
 | IOE | Port-0 levels and interrupts, touch-reset pulse from the bottom bar |
 | Device | Device probes and command ACKs; power-cut items are recorded in the backend only |
-| Books | UTF-8 / GBK TXT and EPUB from TF or internal storage, chapters, font size and per-book progress; swipe to turn, hold text for TOC and hold a shelf row for details, progress reset or confirmed deletion; filter storage sources, sort by name or recent reading, and search by pinyin, initials or English; single-book actions use a popup, while management supports batch selection, progress reset/deletion and rescan; experimental shake-to-turn defaults off. EPUB navigation supports NCX and nav documents. |
+| Books | UTF-8 / GBK TXT and EPUB from TF or internal storage, chapters, font size and per-book progress; swipe to turn, hold text for TOC and hold a shelf row for details, progress reset or confirmed deletion; filter storage sources, sort by name or recent reading, and search by pinyin, initials or English; single-book actions use a popup, while management supports batch selection, progress reset/deletion and rescan; experimental shake-to-turn defaults off. EPUB navigation supports NCX and nav documents. The reading footer shows battery percent; the toolbar top edge adds the date and time (ASCII, UTC+8) once the clock is synced. |
 | Transfer | Device hotspot or existing WiFi, with browser TXT/EPUB upload and complete TTF font uploads to TF; TF card preferred, internal storage limited to 1 MB per file. Scan the hotspot QR to join, or select a 2.4 GHz network and enter its password on the touchscreen. Web provisioning remains available. The browser lists and searches books in the current upload destination, confirms replacement or deletion, and supports upload cancellation and retry. Saved WiFi can be forgotten on the device. Leaving the page stops networking. |
 
 In Books, KEY1 / KEY2 / KEY3 select previous page / toolbar / next page. The toolbar includes full refresh. Hold KEY2 for 500 ms to open the demo menu. Other pages retain KEY2 full GC16 refresh and KEY3 menu. Menu rows select on release; slide away to cancel.
@@ -138,7 +138,7 @@ Port-0; see the pin table in [main/apps/app_ioe.c](main/apps/app_ioe.c).
 
 ## Transfer and limitations
 
-AP and existing WiFi modes provide a QR code for the upload page. AP can switch between joining WiFi and opening the page. The device labels its build timestamp as UTC.
+AP and existing WiFi modes provide a QR code for the upload page. AP can switch between joining WiFi and opening the page. The device labels its build timestamp as UTC. Joining an existing network syncs the wall clock once via NTP (UTC+8) and stops; the PMU RTC is not written, so a power cycle needs another sync, and no clock is shown before the first sync.
 
 The transfer server runs only on its page and stops on exit. It uses local-network HTTP without separate login or TLS; peers on that network can manage books in the active upload storage, so use a trusted network. Saved WiFi credentials reside in device NVS and are not returned by public endpoints or logs. NVS/flash encryption is not enabled, so this does not provide physical-access protection.
 

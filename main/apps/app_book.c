@@ -39,6 +39,7 @@
 #include <time.h>
 
 #include "app.h"
+#include "app_clock.h"
 #include "app_registry.h"
 #include "book_layout.h"
 #include "book_policy.h"
@@ -54,6 +55,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "read_pico_init.h"
+#include "read_pico_pmu.h"
 #include "read_pico_sd.h"
 #include "read_pico_search.h"
 #include "settings.h"
@@ -131,6 +133,10 @@ static const char* s_image_error;
 static char s_image_origin[224];
 static uint32_t s_file_size;
 static int s_px, s_turns, s_unsaved;
+// HUD 电量缓存：render 只读它，采样在 on_enter/on_tick，保持 render 纯绘制。
+// HUD battery cache: render only reads it; sampling lives in on_enter/on_tick so render stays pure.
+static int s_batt_pct = -1;
+static int64_t s_batt_ms;
 static int64_t s_poll_ms, s_last_turn_ms, s_size_settle_ms, s_sensor_ms;
 static bool s_shake_enabled, s_sensor_on;
 static bool s_sensor_saved;
@@ -546,12 +552,26 @@ static void draw_reader(uint8_t* fb, size_t page) {
                  (unsigned)book_layout_page_count(), percent(page));
     else snprintf(suffix, sizeof(suffix), " · 本章 %u/… · 全书 %u%%", (unsigned)page + 1, percent(page));
     copy_text(name, sizeof(name), s_save_failed ? "进度未保存，稍后重试" : s_title);
-    fit_text(name, UI_PX_CAPTION, track.width - ttf_text_width_px(UI_PX_CAPTION, suffix));
+    // 电量放在同一行右端：小时级变化，不会像时钟那样逼页脚每分钟重刷。
+    // Battery sits at the right end of the same line: it changes hourly, unlike a
+    // clock which would force a footer refresh every minute.
+    char batt[8];
+    int batt_w = 0;
+    if (s_batt_pct >= 0) {
+        const unsigned pct = (unsigned)s_batt_pct > 100u ? 100u : (unsigned)s_batt_pct;
+        snprintf(batt, sizeof(batt), "%u%%", pct);
+        batt_w = ttf_text_width_px(24, batt) + 12;
+    }
+    fit_text(name, UI_PX_CAPTION, track.width - ttf_text_width_px(UI_PX_CAPTION, suffix) - batt_w);
     snprintf(line, sizeof(line), "%s%s", name, suffix);
     ui_text(fb, track.x, track.y + 36, UI_PX_CAPTION, line, EPD_DRAW_ALIGN_LEFT, false);
+    if (batt_w) {
+        ui_text(fb, track.x + track.width - batt_w + 12, track.y + 40, 24, batt,
+                EPD_DRAW_ALIGN_LEFT, false);
+    }
     if (s_toolbar) {
         EpdRect panel = {UI_MARGIN - 8, tool_rect(0).y - 110, ui_content_width() + 16, BOOK_TOOL_ROWS * (UI_BTN_H + UI_GAP) + 110};
-        ui_clear_rect_fast(fb, (EpdRect){panel.x, panel.y - 24, panel.width, panel.height + 24});
+        ui_clear_rect_fast(fb, (EpdRect){panel.x, panel.y - 48, panel.width, panel.height + 48});
         epd_fill_rect((EpdRect){panel.x, panel.y - 16, panel.width, 8}, UI_GRAY_LIGHT, fb);
         ui_hairline(fb, panel.y - 8, panel.x, panel.width, UI_GRAY_BLACK);
         ui_text(fb, UI_MARGIN, panel.y + 8, UI_PX_CAPTION,
@@ -560,6 +580,25 @@ static void draw_reader(uint8_t* fb, size_t page) {
                 "左右点按/滑动 · 正文长按目录", EPD_DRAW_ALIGN_LEFT, false);
         ui_text(fb, UI_MARGIN, panel.y + 72, UI_PX_CAPTION,
                 "中键长按：演示菜单", EPD_DRAW_ALIGN_LEFT, false);
+        // 时钟只在工具态出现：开工具栏才重画，分钟级变化不会带来周期刷屏。
+        // The clock appears only in the toolbar: opening it repaints, so a
+        // minute-scale value never causes a periodic refresh.
+        char stamp[48] = {0};
+        char hm[8], md[16];
+        const bool have_hm = app_clock_hm(hm, sizeof(hm));
+        if (have_hm && app_clock_md(md, sizeof(md))) snprintf(stamp, sizeof(stamp), "%s %s", md, hm);
+        else if (have_hm) snprintf(stamp, sizeof(stamp), "%s", hm);
+        if (s_batt_pct >= 0) {
+            const size_t n = strlen(stamp);
+            const unsigned pct = (unsigned)s_batt_pct > 100u ? 100u : (unsigned)s_batt_pct;
+            snprintf(stamp + n, sizeof(stamp) - n, "%s%u%%", n ? " · " : "", pct);
+        }
+        if (stamp[0]) {
+            // 面板上沿外侧：+72 行会和右上字号盒竖直重叠（真机屏摄确认）。
+            // Outside the panel's top edge: the +72 row overlaps the size box
+            // vertically (confirmed by on-device photo).
+            ui_text(fb, ui_content_right(), panel.y - 44, 24, stamp, EPD_DRAW_ALIGN_RIGHT, false);
+        }
         EpdRect size_box = {ui_content_right() - 180, panel.y + 8, 180, 84};
         ui_draw_round_rect(fb, size_box, UI_CHIP_RADIUS, UI_GRAY_BLACK);
         ui_text(fb, size_box.x + size_box.width - UI_PAD, size_box.y + 8, UI_PX_CAPTION,
@@ -1385,6 +1424,15 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
     }
     return APP_REDRAW_NONE;
 }
+// 电量只走 STATUS 轮询读，失败保留旧值；-1 表示还没采到，HUD 不画。
+// Battery comes from the STATUS poll only; failures keep the old value and -1
+// means never sampled, so the HUD draws nothing.
+static void sample_battery(void) {
+    if (read_pico_pmu_poll() != ESP_OK) return;
+    const pmu_snapshot_t* st = read_pico_pmu_get();
+    if (st) s_batt_pct = (int)(st->soc_permille / 10);
+}
+
 static void on_enter(app_ctx_t* ctx) {
     s_resume_path[0] = 0;
     ensure_prep();
@@ -1392,6 +1440,8 @@ static void on_enter(app_ctx_t* ctx) {
     ctx->leaf = 0;
     s_count = 0;
     s_px = app_settings_book_px();
+    s_batt_ms = 0;
+    sample_battery();
     s_scan_pending = true;
     s_resume_pending = true;
     // 传书页已停止并 join HTTP，安全注销且只丢弃对应路径的旧进度。
@@ -1617,6 +1667,12 @@ static app_redraw_t on_key_long(app_ctx_t* ctx, int key) {
 }
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (ctx->consumed) return APP_REDRAW_NONE;
+    // 电量小时级变化，一分钟采一次不会带来额外刷屏。
+    // Battery moves on an hourly scale; a one-minute cadence adds no redraws.
+    if (ctx->now_ms - s_batt_ms >= 60000) {
+        s_batt_ms = ctx->now_ms;
+        sample_battery();
+    }
     if (s_save_failed && ctx->now_ms - s_save_retry_ms >= 15000) {
         s_save_retry_ms = ctx->now_ms;
         bool failed = s_save_failed;

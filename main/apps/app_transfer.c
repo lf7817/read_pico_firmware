@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "app_clock.h"
 #include "book_store.h"
 #include "book_progress.h"
 #include "display.h"
@@ -531,6 +532,9 @@ static void transfer_on_exit(app_ctx_t* ctx) {
              (unsigned)s_internal_before, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 }
 
+// STA 取得地址后校一次时；AP 没有上游不校。/ Sync once when STA has an address; AP has no upstream.
+static bool s_clock_started;
+
 static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (s_view != TRANSFER_HOME) return network_ui_tick(ctx);
     if (s_start_pending) {
@@ -560,6 +564,10 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     read_pico_transfer_service_poll();
     read_pico_transfer_status_t next = {0};
     read_pico_transfer_get_status(&next);
+    if (!s_clock_started && next.network_ready && next.mode == READ_PICO_TRANSFER_MODE_STA) {
+        s_clock_started = true;
+        app_clock_start();
+    }
     if (s_status.state == READ_PICO_TRANSFER_ERROR && next.state == READ_PICO_TRANSFER_STOPPED) return APP_REDRAW_NONE;
     bool network_changed = next.network_ready != s_status.network_ready ||
         next.mode != s_status.mode || strcmp(next.ssid, s_status.ssid) ||

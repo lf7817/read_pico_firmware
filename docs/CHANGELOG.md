@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.zh-CN.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-10-07 · lf7817
+
+- 阅读：进度行右端显示电量百分比；工具栏上沿在校时后显示日期与时间（ASCII 格式，如 10-07 Wed 21:40）加电量，未校时只显示电量、不显示假时间。
+  Show battery percent at the right end of the reading progress line; the toolbar's top edge shows the date and time in ASCII (e.g. 10-07 Wed 21:40) plus battery once synced, and only battery before that.
+- WiFi：传书页以已有 WiFi 取得地址后做一次 NTP 校时（pool.ntp.org，固定 UTC+8），同步完成即停止；不写 PMU RTC，断电后需重新校时。
+  After the transfer page joins an existing WiFi and gets an address, sync the wall clock once via NTP (pool.ntp.org, fixed UTC+8) and stop; the PMU RTC is not written, so a power cycle needs another sync.
+
 ## 2026-09-28 · UNSaWEN
 
 - 阅读：进入书架先确认是否续读；ZIP目录连续读取、字宽测量不生成位图，当前章先排起始/续读页，其余分页分批补齐。

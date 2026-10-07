@@ -6,6 +6,7 @@ set(main_requires
     continuous_du
     e0470_epaper_waveform
     read_pico_pmu
+    lwip
     fatfs
     wear_levelling
     bootloader_support
@@ -21,6 +22,7 @@ set(main_requires
 idf_component_register(
     SRCS
         "app_main.c"
+        "app_clock.c"
         "display.c"
         "sleep.c"
         "settings.c"
