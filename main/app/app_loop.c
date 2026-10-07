@@ -52,6 +52,15 @@
 // Retry the saved SD font shortly after a card appears or mounts.
 #define FONT_RETRY_INTERVAL_MS 3000
 #define MEDIA_POLL_INTERVAL_MS 500
+// 低电量判定每 30 秒读一次 STATUS 就够，更密只是白耗 I2C 与电。
+// A 30s STATUS poll is enough for the low-battery check; faster only burns I2C.
+#define AUTO_LOCK_BATT_POLL_MS 30000
+// PMU 报千分比。5% 仍够再画一次锁屏图（GC16 约 0.4 秒）。
+// The PMU reports permille; 5% still leaves room for one lock-face GC16 (~0.4s).
+#define AUTO_LOCK_LOW_SOC_PERMILLE 50
+// STATUS.charge_state 里「充电中」的取值（协议文档：2）。
+// charge_state value for "charging" in the protocol (2).
+#define PMU_CHARGE_CHARGING 2
 
 static int64_t s_lock_ignore_until_ms;
 
@@ -263,6 +272,10 @@ void app_loop_run(const app_loop_config_t* config) {
     int64_t last_lock_poll_ms = 0;
     int64_t last_font_retry_ms = 0;
     int64_t last_media_poll_ms = 0;
+    int64_t last_activity_ms = esp_timer_get_time() / 1000;
+    int64_t last_batt_poll_ms = 0;
+    bool low_battery = false;
+    bool low_bat_handled = false;
     bool media_mounted = ttf_font_ready() && !ttf_font_is_builtin();
     bool media_invalidated = false;
     app_lock_ignore_for(APP_LOCK_IGNORE_BOOT_MS);
@@ -288,6 +301,9 @@ void app_loop_run(const app_loop_config_t* config) {
         ctx.now_ms = esp_timer_get_time() / 1000;
         ctx.pressed = pressed;
         ctx.released = released;
+        // 三键也在触摸面板上，所以触摸事件就是全部的活动来源。
+        // The three keys live on the touch panel, so touch covers all activity.
+        if (pressed || released || touch.touched) last_activity_ms = ctx.now_ms;
         ctx.consumed = false;
         ctx.request_app = NULL;
         ctx.request_menu = false;
@@ -426,6 +442,7 @@ void app_loop_run(const app_loop_config_t* config) {
                     menu_pressed = UI_MENU_HIT_NONE;
                     enter_lock_and_sleep(ctx.hl, &s_lock_ignore_until_ms, ctx.acc);
                     ctx.now_ms = esp_timer_get_time() / 1000;
+                    last_activity_ms = ctx.now_ms;
                     poll_media(&ctx, current, &media_mounted, &media_invalidated);
                     last_media_poll_ms = ctx.now_ms;
                     ctx.consumed = true;
@@ -437,6 +454,54 @@ void app_loop_run(const app_loop_config_t* config) {
                     if (menu_open) present_menu(&ctx, current, menu_leaf, &feedback);
                     else app_present(&ctx, current, APP_REDRAW_PAGE);
                 }
+            }
+        }
+
+        // 低电量：充电中解除闭锁；确实低电且没充电时只锁一次，不每轮重复弹。
+        // Low battery: charging clears the latch; lock once, not on every poll.
+        if (read_pico_pmu_ready() && !current->holds_pmu
+            && ctx.now_ms - last_batt_poll_ms >= AUTO_LOCK_BATT_POLL_MS) {
+            last_batt_poll_ms = ctx.now_ms;
+            if (read_pico_pmu_poll() == ESP_OK) {
+                const pmu_snapshot_t* st = read_pico_pmu_get();
+                if (st != NULL) {
+                    if (st->charge_state == PMU_CHARGE_CHARGING) low_bat_handled = false;
+                    low_battery = st->soc_permille <= AUTO_LOCK_LOW_SOC_PERMILLE
+                        && st->charge_state != PMU_CHARGE_CHARGING;
+                }
+            }
+        }
+
+        // 自动锁屏与电源键短按共用同一条锁屏路径，不另写一套。
+        // Auto-lock reuses the short-power-key path instead of a second one.
+        const uint8_t auto_min = app_settings_auto_lock_min();
+        const bool idle_due = auto_min != 0
+            && ctx.now_ms - last_activity_ms >= (int64_t)auto_min * 60000;
+        const bool batt_due = low_battery && !low_bat_handled;
+        if ((idle_due || batt_due) && read_pico_pmu_ready() && !current->holds_pmu
+            && ctx.now_ms >= s_lock_ignore_until_ms) {
+            held_key = -1;
+            cancel_gesture(&ctx, current, &gesture);
+            if (menu_pressed >= 0) menu_feedback(&ctx, current, menu_leaf, menu_pressed, false, &feedback);
+            menu_pressed = UI_MENU_HIT_NONE;
+            last_activity_ms = ctx.now_ms;
+            if (menu_open) {
+                // 菜单开着先收菜单并重新计时，下一轮再判锁屏。
+                // Close an open menu and restart the timer; lock next round.
+                menu_open = false;
+                app_present(&ctx, current, APP_REDRAW_PAGE);
+            } else {
+                ESP_LOGI(TAG, "auto lock: %s", batt_due ? "low battery" : "idle");
+                if (batt_due) low_bat_handled = true;
+                enter_lock_and_sleep(ctx.hl, &s_lock_ignore_until_ms, ctx.acc);
+                ctx.now_ms = esp_timer_get_time() / 1000;
+                last_activity_ms = ctx.now_ms;
+                poll_media(&ctx, current, &media_mounted, &media_invalidated);
+                last_media_poll_ms = ctx.now_ms;
+                ctx.consumed = true;
+                ctx.pressed = false;
+                ctx.released = false;
+                app_present(&ctx, current, APP_REDRAW_PAGE);
             }
         }
 

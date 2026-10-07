@@ -41,12 +41,17 @@ extern const app_desc_t app_sleep;
 #define SLEEP_HIT_TRY 10
 #define SLEEP_HIT_READ 11
 #define SLEEP_HIT_PICKUP 12
+#define SLEEP_HIT_AUTO_OFF 20
+#define SLEEP_HIT_AUTO_5 21
+#define SLEEP_HIT_AUTO_10 22
+#define SLEEP_HIT_AUTO_30 23
 
 typedef struct {
     int wake_y;
     int chip_y;
     int lock_y;
     int mode_y;
+    int auto_y;
     int desc_y;
     EpdRect pickup;
     EpdRect try_btn;
@@ -73,6 +78,10 @@ static const int k_mode_ids[] = {
 static const char* const k_chip_btn[] = {
     "按键 Key", "拿起 Pickup", "闹钟 Alarm", "来电开机 AC On",
 };
+static const char* const k_auto_btn[] = { "关 Off", "5 分", "10 分", "30 分" };
+static const int k_auto_ids[] = {
+    SLEEP_HIT_AUTO_OFF, SLEEP_HIT_AUTO_5, SLEEP_HIT_AUTO_10, SLEEP_HIT_AUTO_30,
+};
 static const char* const k_bar_btn[] = { "试睡 Try", "读取 Read" };
 
 static EpdRect sleep_chip_rect(int i, int y) {
@@ -91,12 +100,14 @@ static sleep_geom_t sleep_geom(void) {
     const int chip_y = wake_y + UI_SEC_HEAD + 2 * UI_ROW_H_SM + UI_GAP;
     const int lock_y = chip_y + SLEEP_CHIP_H + UI_SECTION_GAP;
     const int mode_y = lock_y + UI_SEC_HEAD;
+    const int auto_y = mode_y + UI_BTN_H + UI_SECTION_GAP;
     return (sleep_geom_t){
         .wake_y = wake_y,
         .chip_y = chip_y,
         .lock_y = lock_y,
         .mode_y = mode_y,
-        .desc_y = mode_y + UI_BTN_H + UI_SECTION_GAP,
+        .auto_y = auto_y,
+        .desc_y = auto_y + UI_SEC_HEAD + UI_BTN_H + UI_SECTION_GAP,
         .pickup = sleep_chip_rect(1, chip_y),
         .try_btn = ui_bar_rect(0, 2),
         .read_btn = ui_bar_rect(1, 2),
@@ -284,6 +295,13 @@ static void draw_sleep_page(uint8_t* framebuffer) {
     };
     sleep_draw_grid(framebuffer, 3, g.mode_y, k_mode_btn, mode_on);
 
+    ui_draw_section(framebuffer, g.auto_y, "自动锁屏 Auto lock");
+    const uint8_t auto_min = app_settings_auto_lock_min();
+    bool auto_on[] = {
+        auto_min == 0, auto_min == 5, auto_min == 10, auto_min == 30,
+    };
+    sleep_draw_grid(framebuffer, 4, g.auto_y + UI_SEC_HEAD, k_auto_btn, auto_on);
+
     int y_desc = ui_draw_section(framebuffer, g.desc_y, "说明 Description");
     ui_text(
         framebuffer, UI_MARGIN, y_desc, UI_PX_BODY, note_zh,
@@ -302,6 +320,8 @@ static void draw_sleep_page(uint8_t* framebuffer) {
 static int sleep_hit_test(const sleep_geom_t* g, uint16_t x, uint16_t y) {
     if (ui_rect_hit(g->pickup, x, y)) return SLEEP_HIT_PICKUP;
     int hit = ui_grid_hit(x, y, 3, 1, g->mode_y, UI_BTN_H, k_mode_ids);
+    if (hit >= 0) return hit;
+    hit = ui_grid_hit(x, y, 4, 1, g->auto_y + UI_SEC_HEAD, UI_BTN_H, k_auto_ids);
     if (hit >= 0) return hit;
     if (ui_rect_hit(g->try_btn, x, y)) return SLEEP_HIT_TRY;
     if (ui_rect_hit(g->read_btn, x, y)) return SLEEP_HIT_READ;
@@ -329,6 +349,17 @@ static app_redraw_t sleep_on_hit(app_ctx_t* ctx, int hit) {
             app_settings_set_sleep_mode((app_sleep_mode_t)hit);
             ESP_LOGI(TAG, "lock mode %s", app_sleep_mode_name((app_sleep_mode_t)hit));
             return APP_REDRAW_PAGE;
+        case SLEEP_HIT_AUTO_OFF:
+        case SLEEP_HIT_AUTO_5:
+        case SLEEP_HIT_AUTO_10:
+        case SLEEP_HIT_AUTO_30: {
+            const uint8_t min = hit == SLEEP_HIT_AUTO_5 ? 5
+                : hit == SLEEP_HIT_AUTO_10 ? 10
+                : hit == SLEEP_HIT_AUTO_30 ? 30 : 0;
+            app_settings_set_auto_lock_min(min);
+            ESP_LOGI(TAG, "auto lock %u min", (unsigned)min);
+            return APP_REDRAW_PAGE;
+        }
         case SLEEP_HIT_PICKUP:
             if (!s_ui.pickup_ok) return APP_REDRAW_NONE;
             app_settings_set_pickup_wake(!app_settings_pickup_wake());

@@ -45,3 +45,9 @@ void app_settings_set_book_px(uint8_t px);
 bool app_settings_book_shake(void);
 /// 保存实验性晃动翻页开关。/ Persist the experimental shake page-turn switch.
 void app_settings_set_book_shake(bool on);
+/// 无操作自动锁屏分钟数：0=关，其余为 5/10/30。默认关，不改变现有行为。
+/// Idle auto-lock in minutes: 0 = off, otherwise 5/10/30. Defaults off so the
+/// existing behaviour does not change on its own.
+uint8_t app_settings_auto_lock_min(void);
+/// 非法值回落 0（关）。/ Invalid values fall back to 0 (off).
+void app_settings_set_auto_lock_min(uint8_t min);

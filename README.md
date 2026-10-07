@@ -84,7 +84,7 @@ The function menu lists pages in the order defined in
 | Power | Battery voltage, level and charging status; EPD rails, temperature, faults and read-only SY7636A configuration |
 | PMU | Protocol status, events, configuration and commands |
 | Power Key | `key_raw_events`, press/release levels and DOWN/UP/SHORT/LONG events |
-| Sleep | Light sleep with key or pickup wake, deep sleep and power off |
+| Sleep | Light sleep with key or pickup wake, deep sleep and power off; auto-lock after 5/10/30 min idle (off by default) and a low-battery lock |
 | Storage | TF card capacity and mount status, remount, format and buzzer |
 | Font | Select TTF files from the card, preview typesetting and cycle font weight |
 | IOE | Port-0 levels and interrupts, touch-reset pulse from the bottom bar |
