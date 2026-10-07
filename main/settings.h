@@ -45,6 +45,18 @@ void app_settings_set_book_px(uint8_t px);
 bool app_settings_book_shake(void);
 /// 保存实验性晃动翻页开关。/ Persist the experimental shake page-turn switch.
 void app_settings_set_book_shake(bool on);
+/// 阅读翻页方式。右手=现状；左手=镜像点击分区；按键=只认按键。
+/// Reading page-turn mode. Right = the shipped layout, Left mirrors the tap
+/// zones, Keys ignores taps and swipes for paging.
+typedef enum {
+    APP_TURN_RIGHT = 0,
+    APP_TURN_LEFT = 1,
+    APP_TURN_KEYS = 2,
+} app_turn_mode_t;
+/// 默认右手，即历史行为。/ Defaults to right-hand, the historical behaviour.
+app_turn_mode_t app_settings_turn_mode(void);
+/// 保存翻页方式，非法值回落右手。/ Persist the mode; invalid values fall back to right.
+void app_settings_set_turn_mode(app_turn_mode_t mode);
 /// 无操作自动锁屏分钟数：0=关，其余为 5/10/30。默认关，不改变现有行为。
 /// Idle auto-lock in minutes: 0 = off, otherwise 5/10/30. Defaults off so the
 /// existing behaviour does not change on its own.

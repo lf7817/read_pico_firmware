@@ -72,8 +72,8 @@
 #define BOOK_SHAKE_THS_MG 192
 #define BOOK_SHAKE_DUR 2
 #define BOOK_SIZE_SETTLE_MS 400
-#define BOOK_TOOL_COUNT 6
-#define BOOK_TOOL_ROWS 2
+#define BOOK_TOOL_COUNT 7
+#define BOOK_TOOL_ROWS 3
 
 typedef enum { SHELF, READING, TOC, MANAGE, BULK, SEARCH } book_view_t;
 typedef struct {
@@ -659,8 +659,14 @@ static void draw_reader(uint8_t* fb, size_t page) {
         snprintf(size_hint, sizeof(size_hint), "%d px", s_px);
         ui_text(fb, size_box.x + size_box.width - UI_PAD, size_box.y + 44, UI_PX_CAPTION,
                 size_hint, EPD_DRAW_ALIGN_RIGHT, false);
+        static const char* const k_turn_lbl[] = {"翻页 右手", "翻页 左手", "翻页 按键"};
+        // 三档都要显示出来：早先写成 < KEYS 才用原值，按键档被错标成「右手」。
+        // All three states must be visible; the old `< KEYS` clamp mislabelled
+        // Keys as Right.
+        const int turn_idx = app_settings_turn_mode() <= APP_TURN_KEYS
+            ? (int)app_settings_turn_mode() : APP_TURN_RIGHT;
         const char* labels[] = {"目录", "字号 −", "字号 +", s_shake_enabled ? "晃动 开*" : "晃动 关*",
-                                "强刷", "书架"};
+                                "强刷", k_turn_lbl[turn_idx], "书架"};
         for (int i = 0; i < BOOK_TOOL_COUNT; ++i) draw_control(fb, tool_rect(i), labels[i], 200 + i);
     }
     ui_draw_menu_handle(fb, false);
@@ -1401,6 +1407,11 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
                 else if (i == 1 || i == 2) return resize_text(ctx, i == 1 ? -1 : 1);
                 else if (i == 3) { s_shake_enabled = !s_shake_enabled; app_settings_set_book_shake(s_shake_enabled); sensor_set(ctx, s_shake_enabled); }
                 else if (i == 4) return APP_REDRAW_FULL;
+                else if (i == 5) {
+                    const int next = ((int)app_settings_turn_mode() + 1) % 3;
+                    app_settings_set_turn_mode((app_turn_mode_t)next);
+                    ESP_LOGI(TAG, "turn mode %d", next);
+                }
                 else { save_progress(); free_book(); s_view = SHELF; scan_shelf(ctx); }
                 return APP_REDRAW_PAGE;
             }
@@ -1425,8 +1436,16 @@ static app_redraw_t action_at(app_ctx_t* ctx, uint16_t x, uint16_t y) {
             unlock_draw();
             if (block != SIZE_MAX) return open_image(ctx, block);
         }
-        if (x < UI_LOCK_WIDTH * 3 / 10) return turn_page(ctx, -1);
-        if (x >= UI_LOCK_WIDTH * 7 / 10) return turn_page(ctx, 1);
+        // 翻页方式：左手镜像左右分区，按键模式两侧不翻页；中间始终开合工具栏。
+        // Left mirrors the side zones, Keys pages by key only; the middle always
+        // toggles the toolbar.
+        const app_turn_mode_t turn = app_settings_turn_mode();
+        if (turn != APP_TURN_KEYS) {
+            const int dir = x < UI_LOCK_WIDTH * 3 / 10 ? -1 : 1;
+            if (x < UI_LOCK_WIDTH * 3 / 10 || x >= UI_LOCK_WIDTH * 7 / 10) {
+                return turn_page(ctx, turn == APP_TURN_LEFT ? -dir : dir);
+            }
+        }
         s_toolbar = !s_toolbar;
         invalidate_prep();
         return APP_REDRAW_PAGE;
@@ -1665,8 +1684,12 @@ static app_redraw_t gesture_event(app_ctx_t* ctx, const ui_gesture_event_t* ev) 
     }
     if (!s_clear_confirm && !s_scan_pending && !s_resume_path[0]) {
         if (s_view == READING && !s_toolbar && ui_rect_hit(body_rect(), ev->x0, ev->y0)) {
-            if (ev->type == UI_GESTURE_SWIPE_L) return turn_page(ctx, 1);
-            if (ev->type == UI_GESTURE_SWIPE_R) return turn_page(ctx, -1);
+            // 滑动方向不随持握手镜像：语义是「内容往哪走」，与左右手无关。
+            // Swipes do not mirror with grip: the metaphor is where content goes.
+            if (app_settings_turn_mode() != APP_TURN_KEYS) {
+                if (ev->type == UI_GESTURE_SWIPE_L) return turn_page(ctx, 1);
+                if (ev->type == UI_GESTURE_SWIPE_R) return turn_page(ctx, -1);
+            }
         } else if ((s_view == SHELF || s_view == TOC || (s_view == BULK && !s_batch_confirm)) &&
                    (ev->type == UI_GESTURE_SWIPE_U || ev->type == UI_GESTURE_SWIPE_D)) {
             int next = ctx->leaf + (ev->type == UI_GESTURE_SWIPE_U ? 1 : -1);

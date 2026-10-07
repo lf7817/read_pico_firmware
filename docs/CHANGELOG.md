@@ -9,6 +9,8 @@ User-visible changes by date and author; Git retains implementation history. See
   Show battery percent at the right end of the reading progress line; the toolbar's top edge shows the date and time in ASCII (e.g. 10-07 Wed 21:40) plus battery once synced, and only battery before that.
 - 阅读：工具栏状态行按最近翻页节奏显示本章剩余时间（需 ≥5 个有效样本、本章分页已排完且非末页；间隔 <1 秒或 >5 分钟的样本丢弃，开书清零）。设备只有逐章分页，故不显示全书剩余时间。
   Show the estimated time left in the current chapter on the toolbar status line, from recent page-turn pace (needs ≥5 valid samples, a fully paginated chapter and a non-final page; gaps under 1s or over 5min are dropped, reset on open). Only per-chapter, since the device paginates chapter by chapter.
+- 图书：工具栏新增「翻页」三态循环——右手（现状）/ 左手（镜像左右点击分区）/ 按键（只认 KEY1、KEY3）。滑动方向不随持握手镜像，因为它的语义是内容往哪走；按键模式下点两侧与滑动都不翻页，中间点击仍可开合工具栏。
+  Add a three-state turn-mode button to the reader toolbar: right-hand (the previous layout), left-hand (mirrored tap zones) and keys-only (KEY1/KEY3). Swipes deliberately do not mirror, since their meaning is where the content travels; in keys-only mode side taps and swipes stop paging while the centre tap still toggles the toolbar.
 - 睡眠：新增「自动锁屏 Auto lock」四档（关 / 5 / 10 / 30 分钟，默认关，不改变现有行为）；闲置超时与电源键短按共用同一条锁屏路径，菜单开着时先收菜单并重新计时。另加低电量自动锁屏：电量 ≤5% 且未充电时锁一次，插入充电器后重新允许。
   Add an Auto lock selector (off / 5 / 10 / 30 minutes, off by default so existing behaviour does not change); the idle timeout reuses the exact short-power-key lock path, and an open menu closes first instead of locking. Also lock once when the battery is at or below 5% and not charging, re-armed when a charger is attached.
 - WiFi：传书页以已有 WiFi 取得地址后做一次 NTP 校时（pool.ntp.org，固定 UTC+8），同步完成即停止；不写 PMU RTC，断电后需重新校时。

@@ -26,6 +26,7 @@
 #define NVS_KEY_BOOK_PX "bk_px"
 #define NVS_KEY_BOOK_SHAKE "bk_shake"
 #define NVS_KEY_AUTO_LOCK "lock_min"
+#define NVS_KEY_TURN "bk_turn"
 #define FONT_PATH_MAX 160
 
 static app_sleep_mode_t s_sleep = APP_SLEEP_DEEP;
@@ -36,6 +37,7 @@ static bool s_pickup_wake;
 static uint8_t s_book_px = 48;
 static bool s_book_shake;
 static uint8_t s_auto_lock_min;
+static uint8_t s_turn_mode;
 
 static uint8_t valid_auto_lock_min(uint8_t min) {
     return min == 5 || min == 10 || min == 30 ? min : 0;
@@ -77,6 +79,10 @@ void app_settings_init(void) {
     if (nvs_get_u8(h, NVS_KEY_BOOK_SHAKE, &book_shake) == ESP_OK) s_book_shake = book_shake != 0;
     if (nvs_get_u8(h, NVS_KEY_AUTO_LOCK, &auto_lock) == ESP_OK) {
         s_auto_lock_min = valid_auto_lock_min(auto_lock);
+    }
+    uint8_t turn = 0;
+    if (nvs_get_u8(h, NVS_KEY_TURN, &turn) == ESP_OK && turn <= APP_TURN_KEYS) {
+        s_turn_mode = turn;
     }
     nvs_close(h);
     ESP_LOGI(
@@ -191,4 +197,15 @@ void app_settings_set_auto_lock_min(uint8_t min) {
     if (s_auto_lock_min == min) return;
     s_auto_lock_min = min;
     nvs_put_u8(NVS_KEY_AUTO_LOCK, min);
+}
+
+app_turn_mode_t app_settings_turn_mode(void) {
+    return (app_turn_mode_t)s_turn_mode;
+}
+
+void app_settings_set_turn_mode(app_turn_mode_t mode) {
+    if (mode > APP_TURN_KEYS) mode = APP_TURN_RIGHT;
+    if (s_turn_mode == (uint8_t)mode) return;
+    s_turn_mode = (uint8_t)mode;
+    nvs_put_u8(NVS_KEY_TURN, s_turn_mode);
 }
