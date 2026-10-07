@@ -527,6 +527,53 @@ static app_redraw_t close_image(void) {
     return APP_REDRAW_PAGE;
 }
 
+/* ---- 本章剩余时间 / Remaining time in this chapter ---- */
+#define PACE_SAMPLES 40
+// 1 秒以内当误触，5 分钟以上当人走了，都不进样本。
+// Under 1s reads as an accidental tap, over 5min as an absent reader; drop both.
+#define PACE_MIN_MS 1000
+#define PACE_MAX_MS 300000
+#define PACE_WARMUP 5
+
+static uint32_t s_pace[PACE_SAMPLES];
+static int s_pace_count, s_pace_head;
+static int64_t s_prev_turn_ms;
+
+static void pace_reset(void) {
+    s_pace_count = s_pace_head = 0;
+    s_prev_turn_ms = 0;
+}
+
+static void pace_record(int64_t gap_ms) {
+    if (gap_ms < PACE_MIN_MS || gap_ms > PACE_MAX_MS) return;
+    s_pace[s_pace_head] = (uint32_t)gap_ms;
+    s_pace_head = (s_pace_head + 1) % PACE_SAMPLES;
+    if (s_pace_count < PACE_SAMPLES) ++s_pace_count;
+}
+
+// 中位数翻页间隔 × 本章剩余页数。样本不足、本章未排完或已在末页时返回 false。
+// Median turn interval times the pages left in this chapter; false while the
+// sample is thin, the chapter is still paginating, or the last page is shown.
+static bool pace_left_text(size_t page, char* out, size_t size) {
+    const size_t pages = book_layout_page_count();
+    if (s_pace_count < PACE_WARMUP || !book_layout_complete() || page + 1 >= pages) return false;
+    uint32_t sorted[PACE_SAMPLES];
+    for (int i = 0; i < s_pace_count; ++i) sorted[i] = s_pace[i];
+    for (int i = 1; i < s_pace_count; ++i) {
+        const uint32_t v = sorted[i];
+        int j = i - 1;
+        while (j >= 0 && sorted[j] > v) { sorted[j + 1] = sorted[j]; --j; }
+        sorted[j + 1] = v;
+    }
+    const int64_t ms = (int64_t)sorted[s_pace_count / 2] * (int64_t)(pages - page - 1);
+    int64_t min = (ms + 59999) / 60000;
+    if (min > 999 * 60 + 59) min = 999 * 60 + 59;   // 显示上限，避免异常样本冲出长串
+    const int hh = (int)(min / 60), mm = (int)(min % 60);
+    if (hh) snprintf(out, size, "剩 %d 小时 %d 分", hh, mm);
+    else snprintf(out, size, "剩 %d 分", mm);
+    return true;
+}
+
 /* ---- 绘制与预渲染 / Drawing and preparation ---- */
 static void draw_reader(uint8_t* fb, size_t page) {
     ui_clear_page(fb);
@@ -583,11 +630,16 @@ static void draw_reader(uint8_t* fb, size_t page) {
         // 时钟只在工具态出现：开工具栏才重画，分钟级变化不会带来周期刷屏。
         // The clock appears only in the toolbar: opening it repaints, so a
         // minute-scale value never causes a periodic refresh.
-        char stamp[48] = {0};
+        char stamp[80] = {0};
         char hm[8], md[16];
         const bool have_hm = app_clock_hm(hm, sizeof(hm));
         if (have_hm && app_clock_md(md, sizeof(md))) snprintf(stamp, sizeof(stamp), "%s %s", md, hm);
         else if (have_hm) snprintf(stamp, sizeof(stamp), "%s", hm);
+        char left[48];
+        if (pace_left_text(page, left, sizeof(left))) {
+            const size_t n = strlen(stamp);
+            snprintf(stamp + n, sizeof(stamp) - n, "%s%s", n ? " · " : "", left);
+        }
         if (s_batt_pct >= 0) {
             const size_t n = strlen(stamp);
             const unsigned pct = (unsigned)s_batt_pct > 100u ? 100u : (unsigned)s_batt_pct;
@@ -964,6 +1016,7 @@ static bool open_book(app_ctx_t* ctx, const char* path) {
     s_view = READING;
     s_toolbar = s_clear_confirm = s_batch_confirm = false;
     s_turns = s_unsaved = 0;
+    pace_reset();
     s_size_settle_ms = 0;
     pending_mark_latest(s_path);
     save_progress();
@@ -1211,6 +1264,8 @@ static app_redraw_t turn_page(app_ctx_t* ctx, int dir) {
     else return APP_REDRAW_NONE;
     if (!changed) { s_view = s_text ? TOC : SHELF; ctx->leaf = s_text ? s_chapter / BOOK_TOC_ROWS : 0; return APP_REDRAW_PAGE; }
     s_toolbar = false;
+    if (s_prev_turn_ms) pace_record(ctx->now_ms - s_prev_turn_ms);
+    s_prev_turn_ms = ctx->now_ms;
     s_last_turn_ms = ctx->now_ms;
 #if APP_GC16_EVERY > 0
     s_full = (++s_turns % APP_GC16_EVERY) == 0;

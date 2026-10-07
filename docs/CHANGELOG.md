@@ -7,6 +7,8 @@ User-visible changes by date and author; Git retains implementation history. See
 
 - 阅读：进度行右端显示电量百分比；工具栏上沿在校时后显示日期与时间（ASCII 格式，如 10-07 Wed 21:40）加电量，未校时只显示电量、不显示假时间。
   Show battery percent at the right end of the reading progress line; the toolbar's top edge shows the date and time in ASCII (e.g. 10-07 Wed 21:40) plus battery once synced, and only battery before that.
+- 阅读：工具栏状态行按最近翻页节奏显示本章剩余时间（需 ≥5 个有效样本、本章分页已排完且非末页；间隔 <1 秒或 >5 分钟的样本丢弃，开书清零）。设备只有逐章分页，故不显示全书剩余时间。
+  Show the estimated time left in the current chapter on the toolbar status line, from recent page-turn pace (needs ≥5 valid samples, a fully paginated chapter and a non-final page; gaps under 1s or over 5min are dropped, reset on open). Only per-chapter, since the device paginates chapter by chapter.
 - WiFi：传书页以已有 WiFi 取得地址后做一次 NTP 校时（pool.ntp.org，固定 UTC+8），同步完成即停止；不写 PMU RTC，断电后需重新校时。
   After the transfer page joins an existing WiFi and gets an address, sync the wall clock once via NTP (pool.ntp.org, fixed UTC+8) and stop; the PMU RTC is not written, so a power cycle needs another sync.
 
