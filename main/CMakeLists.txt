@@ -23,6 +23,7 @@ idf_component_register(
     SRCS
         "app_main.c"
         "app_clock.c"
+        "read_stats.c"
         "display.c"
         "sleep.c"
         "settings.c"

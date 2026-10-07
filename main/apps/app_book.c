@@ -58,6 +58,7 @@
 #include "read_pico_pmu.h"
 #include "read_pico_sd.h"
 #include "read_pico_search.h"
+#include "read_stats.h"
 #include "settings.h"
 #include "ttf_font.h"
 #include "ui_kit.h"
@@ -137,6 +138,7 @@ static int s_px, s_turns, s_unsaved;
 // HUD battery cache: render only reads it; sampling lives in on_enter/on_tick so render stays pure.
 static int s_batt_pct = -1;
 static int64_t s_batt_ms;
+static int64_t s_stats_ms;
 static int64_t s_poll_ms, s_last_turn_ms, s_size_settle_ms, s_sensor_ms;
 static bool s_shake_enabled, s_sensor_on;
 static bool s_sensor_saved;
@@ -737,8 +739,20 @@ static void render(app_ctx_t* ctx, uint8_t* fb) {
     if (s_view == READING && s_text) {
         draw_reader(fb, s_page);
     } else {
+        char head[160];
         ui_clear_page(fb);
-        ui_draw_header(fb, s_view == TOC ? "目录 Contents" : "图书 Books", s_view == TOC ? s_title : s_storage);
+        if (s_view == TOC) {
+            copy_text(head, sizeof(head), s_title);
+        } else {
+            strlcpy(head, s_storage, sizeof(head));
+            char stats[56];
+            if (read_stats_format(stats, sizeof(stats))) {
+                strncat(head, " · ", sizeof(head) - strlen(head) - 1);
+                strncat(head, stats, sizeof(head) - strlen(head) - 1);
+            }
+            fit_text(head, UI_PX_SUB, ui_content_width());
+        }
+        ui_draw_header(fb, s_view == TOC ? "目录 Contents" : "图书 Books", head);
         if (s_view != TOC) {
             draw_control(fb, ui_row_rect(0, 3, 176, 72), s_filter == 0 ? "全部来源" : s_filter == 1 ? "TF 卡" : "内置", 110);
             draw_control(fb, ui_row_rect(1, 3, 176, 72), s_recent_sort ? "按最近" : "按名称", 111);
@@ -1273,6 +1287,7 @@ static app_redraw_t turn_page(app_ctx_t* ctx, int dir) {
     if (s_prev_turn_ms) pace_record(ctx->now_ms - s_prev_turn_ms);
     s_prev_turn_ms = ctx->now_ms;
     s_last_turn_ms = ctx->now_ms;
+    read_stats_note_turn(ctx->now_ms);
 #if APP_GC16_EVERY > 0
     s_full = (++s_turns % APP_GC16_EVERY) == 0;
 #else
@@ -1516,6 +1531,8 @@ static void on_enter(app_ctx_t* ctx) {
     s_px = app_settings_book_px();
     s_batt_ms = 0;
     sample_battery();
+    read_stats_init();
+    s_stats_ms = ctx->now_ms;
     s_scan_pending = true;
     s_resume_pending = true;
     // 传书页已停止并 join HTTP，安全注销且只丢弃对应路径的旧进度。
@@ -1538,6 +1555,7 @@ static void book_on_exit(app_ctx_t* ctx) {
     s_resume_path[0] = 0;
     s_pressed_control = -1;
     save_progress();
+    read_stats_flush(ctx->now_ms);
     sensor_set(ctx, false);
     free_book();
     free(s_shelf);
@@ -1750,6 +1768,15 @@ static app_redraw_t on_tick(app_ctx_t* ctx) {
     if (ctx->now_ms - s_batt_ms >= 60000) {
         s_batt_ms = ctx->now_ms;
         sample_battery();
+    }
+    // 阅读时长落盘：离开阅读态的下一轮就写，比在每个跳转点各补一句更稳；
+    // 阅读中每 5 分钟一次，断电最多丢这一段。flush 对空待写量直接返回。
+    // Stats flush: one tick after leaving the reader covers every exit path,
+    // and every 5 minutes while reading; flush() returns early when idle.
+    if (s_view != READING) read_stats_flush(ctx->now_ms);
+    else if (ctx->now_ms - s_stats_ms >= 300000) {
+        s_stats_ms = ctx->now_ms;
+        read_stats_flush(ctx->now_ms);
     }
     if (s_save_failed && ctx->now_ms - s_save_retry_ms >= 15000) {
         s_save_retry_ms = ctx->now_ms;
