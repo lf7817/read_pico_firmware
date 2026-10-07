@@ -25,9 +25,15 @@
 #define APP_CLOCK_MIN_VALID ((time_t)1704067200)
 
 static bool s_started;
+// 自己记同步标志：esp_sntp_stop() 会把 lwip 的 sync status 复位，
+// 而回调里我们正是要停掉轮询，所以不能再拿那个状态位当判据。
+// Own sync flag: esp_sntp_stop() resets the lwip sync status, and the callback
+// stops polling on purpose, so the status bit cannot be the validity test.
+static bool s_synced;
 
 static void on_synced(struct timeval* tv) {
     (void)tv;
+    s_synced = true;
     esp_sntp_stop();
     ESP_LOGI(TAG, "synced, epoch %ld", (long)time(NULL));
 }
@@ -47,8 +53,7 @@ void app_clock_start(void) {
 }
 
 bool app_clock_valid(void) {
-    if (!s_started) return false;
-    if (esp_sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED) return false;
+    if (!s_started || !s_synced) return false;
     return time(NULL) > APP_CLOCK_MIN_VALID;
 }
 
