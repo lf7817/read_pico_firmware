@@ -39,6 +39,14 @@ bool display_take_white_exit(void);
 void rails_idle_check(int64_t);
 bool read_pico_pmu_ready(void);
 bool read_pico_pmu_take_key_short(void);
+/* 中文：低电量判据只读这两项；字段名与宽度对齐真头 read_pico_pmu.h。
+ * English: the low-battery check reads only these two; names and widths match read_pico_pmu.h. */
+typedef struct { uint16_t soc_permille; uint8_t charge_state; } pmu_snapshot_t;
+#define PMU_CHARGE_NOT_CHARGING 1
+#define PMU_CHARGE_CHARGING 2
+int read_pico_pmu_poll(void);
+const pmu_snapshot_t* read_pico_pmu_get(void);
+uint8_t app_settings_auto_lock_min(void);
 void enter_lock_and_sleep(EpdiyHighlevelState*, int64_t*, void*);
 const char* app_settings_font_path(void);
 bool ttf_font_path_is_builtin(const char*);

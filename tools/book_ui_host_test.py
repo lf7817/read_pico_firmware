@@ -51,7 +51,17 @@ unit = r'''
 #define MALLOC_CAP_8BIT 2
 #define ESP_LOGI(...) ((void)0)
 typedef int esp_err_t;
-typedef struct {int leaf;bool request_menu;} app_ctx_t;
+typedef struct {int leaf;bool request_menu;int64_t now_ms;} app_ctx_t;
+/* 翻页方式与电量/统计是助手函数体引用的宿主侧替身；值由测试自己控制。
+   Turn mode, battery and reading stats are host shims for the extracted helper bodies. */
+typedef enum {APP_TURN_RIGHT=0,APP_TURN_LEFT=1,APP_TURN_KEYS=2} app_turn_mode_t;
+static app_turn_mode_t test_turn_mode;
+static app_turn_mode_t app_settings_turn_mode(void){return test_turn_mode;}
+static int64_t s_batt_ms,s_stats_ms;
+static int test_battery_calls,test_stats_init,test_stats_flush;
+static void sample_battery(void){test_battery_calls++;}
+static void read_stats_init(void){test_stats_init++;}
+static void read_stats_flush(int64_t now){(void)now;test_stats_flush++;}
 typedef enum {APP_REDRAW_PAGE,APP_REDRAW_AREA,APP_REDRAW_NONE} app_redraw_t;
 typedef struct {int x,y,width,height;} EpdRect;
 static EpdRect ui_bar_rect(int i,int count){int width=(508-(count-1)*12)/count;return(EpdRect){40+i*(width+12),1096,width,96};}

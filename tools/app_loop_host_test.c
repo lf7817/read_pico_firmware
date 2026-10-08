@@ -24,6 +24,10 @@ static int home_enters, home_renders, last_menu_leaf, rendered_leaf;
 static const app_desc_t* menu_background;
 static app_desc_t first, second;
 static bool full_tick, lock_due, font_due;
+static bool pmu_present;
+static uint8_t auto_lock_min;
+static pmu_snapshot_t pmu_state;
+static int locks, polls;
 static int64_t time_offset, time_step;
 static int du_areas, gl_areas;
 static bool media_test, sd_font, saved_sd_font;
@@ -49,9 +53,12 @@ enum EpdDrawError update_display_mode(EpdiyHighlevelState*h,int m) {(void)h;(voi
 enum EpdDrawError update_display_white(EpdiyHighlevelState*h) {(void)h;return 0;}
 bool display_take_white_exit(void) {return false;}
 void rails_idle_check(int64_t n) {(void)n;}
-bool read_pico_pmu_ready(void) {return lock_due;}
-bool read_pico_pmu_take_key_short(void) {return true;}
-void enter_lock_and_sleep(EpdiyHighlevelState*h,int64_t*t,void*a) {(void)h;(void)t;(void)a;lock_due=false;time_offset+=1000000;}
+bool read_pico_pmu_ready(void) {return lock_due || pmu_present;}
+bool read_pico_pmu_take_key_short(void) {return lock_due;}
+int read_pico_pmu_poll(void) {polls++; return ESP_OK;}
+const pmu_snapshot_t* read_pico_pmu_get(void) {return &pmu_state;}
+uint8_t app_settings_auto_lock_min(void) {return auto_lock_min;}
+void enter_lock_and_sleep(EpdiyHighlevelState*h,int64_t*t,void*a) {(void)h;(void)t;(void)a;++locks;lock_due=false;time_offset+=1000000;}
 const char* app_settings_font_path(void) {return "builtin";}
 bool ttf_font_path_is_builtin(const char*p) {(void)p;return !font_due&&!saved_sd_font;}
 bool ttf_font_ready(void) {return true;}
@@ -107,6 +114,10 @@ static void reset(void) {
     home_on_touch=home_on_tick=home_on_key=start_second=false;
     home_enters=home_renders=0;rendered_leaf=-1;last_menu_leaf=-1;menu_background=NULL;
     full_tick=lock_due=font_due=false;time_offset=0;time_step=10000;du_areas=gl_areas=0;
+    // 默认没有 PMU、自动锁屏关着、电量健康：既有的 42 个场景行为不变。
+    // Default: no PMU present, auto-lock off, healthy battery — the existing scenarios stay put.
+    pmu_present=false;auto_lock_min=0;locks=0;polls=0;
+    pmu_state=(pmu_snapshot_t){500,PMU_CHARGE_NOT_CHARGING};
     memset(samples,0,sizeof(samples));memset(keys,0,sizeof(keys));memset(events,0,sizeof(events));memset(tick_consumed,0,sizeof(tick_consumed));
     sample_count=step=ticks=enters=exits=touch_calls=menus=highlights=restores=fulls=mode=0;
     request_on_touch=request_on_tick=menu_on_tick=menu_on_touch=cancel_clobber=false;response=APP_REDRAW_NONE;
@@ -234,6 +245,23 @@ int main(void) {
     reset();media_test=sd_font=saved_sd_font=true;mounted_steps[0]=mounted_steps[2]=true;time_step=4000000;first.on_media_lost=lost;
     add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);run();
     assert(media_lost==2&&builtin_opens==2&&!probes&&font_opens==2);
-    puts("app_loop: 42 scheduler scenarios passed");
+    // 自动锁屏：空闲够久自己锁一次，没有按键也没有触摸。
+    // Auto-lock: an idle timeout locks once on its own, with no key and no touch.
+    reset();pmu_present=true;auto_lock_min=1;time_step=20000000;
+    add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);run();
+    assert(locks==1&&!touch_calls&&keys[0]==0);
+    // 低电量：空闲档关着也照样锁，且只锁一次（闭锁），轮询继续但不再弹。
+    // Low battery locks once and latches even with the idle timeout off; polling continues.
+    reset();pmu_present=true;auto_lock_min=0;time_step=20000000;
+    pmu_state=(pmu_snapshot_t){40,PMU_CHARGE_NOT_CHARGING};
+    add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);run();
+    assert(locks==1&&polls>=2);
+    // 充电中不锁：同样的低电量，charge_state 为 CHARGING 时闭锁被解除但不触发。
+    // Charging suppresses the lock: same low SOC, but CHARGING never triggers it.
+    reset();pmu_present=true;auto_lock_min=0;time_step=20000000;
+    pmu_state=(pmu_snapshot_t){40,PMU_CHARGE_CHARGING};
+    add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);add(0,0,0,0);run();
+    assert(!locks&&polls>=2);
+    puts("app_loop: 45 scheduler scenarios passed");
     return 0;
 }
