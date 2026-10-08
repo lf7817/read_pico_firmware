@@ -7,6 +7,12 @@ set -euo pipefail
 mkdir -p build/book-tests
 python tools/gen_book_fixtures.py
 flags=(-std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-omit-frame-pointer -Imain/book)
+# 丢掉未引用段的链接选项按链接器分支：GNU ld 认 --gc-sections，macOS 的 ld 只认 -dead_strip。
+# Dead-strip is linker-specific: GNU ld takes --gc-sections, macOS ld only understands -dead_strip.
+case "$(uname)" in
+    Darwin) gc_sections=(-Wl,-dead_strip) ;;
+    *) gc_sections=(-Wl,--gc-sections) ;;
+esac
 gcc "${flags[@]}" -Itools/book_epub_stubs -Itools/zip_host_stubs tools/book_source_host_test.c main/book/book_source.c main/book/book_txt.c main/book/gbk.c main/book/book_epub.c main/book/zip_reader.c main/book/html_text.c main/book/book_image.c main/book/vendor/tjpgd.c -lz -o build/book-tests/source
 gcc "${flags[@]}" -Itools/book_layout_stubs -Itools/book_source_host_stubs tools/book_layout_host_test.c main/book/book_layout.c -o build/book-tests/layout
 gcc "${flags[@]}" -Itools/book_storage_stubs tools/book_storage_host_test.c main/book/book_progress.c -o build/book-tests/progress
@@ -18,7 +24,7 @@ build/book-tests/progress
 build/book-tests/store
 build/book-tests/policy
 gcc "${flags[@]}" -Itools/ui_gesture_stubs -Imain/ui tools/ui_gesture_host_test.c main/ui/ui_gesture.c -o build/book-tests/gesture
-gcc "${flags[@]}" -ffunction-sections -fdata-sections -Wl,--gc-sections -Itools/ui_gesture_stubs -Imain/ui tools/ui_kit_host_test.c main/ui/ui_kit.c -o build/book-tests/ui_kit
+gcc "${flags[@]}" -ffunction-sections -fdata-sections "${gc_sections[@]}" -Itools/ui_gesture_stubs -Imain/ui tools/ui_kit_host_test.c main/ui/ui_kit.c -o build/book-tests/ui_kit
 build/book-tests/gesture
 build/book-tests/ui_kit
 gcc "${flags[@]}" -Itools/html_text_stubs tools/html_text_host_test.c main/book/html_text.c -o build/book-tests/html

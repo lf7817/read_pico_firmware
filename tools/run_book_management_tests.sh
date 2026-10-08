@@ -13,7 +13,11 @@ flags=(-std=gnu11 -Wall -Wextra -Werror -g -fsanitize=address,undefined)
 gcc "${flags[@]}" -Icomponents/read_pico_search/include tools/transfer_host_test.c components/read_pico_search/read_pico_search.c -o build/book-tests/transfer
 build/book-tests/transfer
 python3 tools/test_transfer_font.py
-gcc "${flags[@]}" -Imanaged_components/espressif__cjson/cJSON tools/transfer_wifi_host_test.c managed_components/espressif__cjson/cJSON/cJSON.c -lm -o build/book-tests/transfer-wifi
+# 第三方 cJSON 仍在用 sprintf；clang 把弃用告警升级成错误。只给它单独放宽，不污染我们的 TU。
+# Vendored cJSON still calls sprintf, which clang promotes to an error here; silence that TU only.
+gcc "${flags[@]}" -Wno-deprecated-declarations -Imanaged_components/espressif__cjson/cJSON \
+    -c managed_components/espressif__cjson/cJSON/cJSON.c -o build/book-tests/cjson.o
+gcc "${flags[@]}" -Imanaged_components/espressif__cjson/cJSON tools/transfer_wifi_host_test.c build/book-tests/cjson.o -lm -o build/book-tests/transfer-wifi
 build/book-tests/transfer-wifi
 gcc "${flags[@]}" -Itools/transfer_ui_stubs -Icomponents/read_pico_transfer/include tools/transfer_ui_host_test.c -o build/book-tests/transfer-ui
 build/book-tests/transfer-ui
