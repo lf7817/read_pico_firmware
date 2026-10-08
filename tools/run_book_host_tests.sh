@@ -29,3 +29,5 @@ build/book-tests/gesture
 build/book-tests/ui_kit
 gcc "${flags[@]}" -Itools/html_text_stubs tools/html_text_host_test.c main/book/html_text.c -o build/book-tests/html
 build/book-tests/html
+gcc "${flags[@]}" tools/img_dither_host_test.c main/book/img_dither.c -o build/book-tests/img_dither
+build/book-tests/img_dither
