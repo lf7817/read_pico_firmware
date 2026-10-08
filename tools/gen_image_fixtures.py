@@ -30,6 +30,33 @@ def write_png(path, width, height, pixel):
     return len(raw)
 
 
+def write_adam7_png(path, width, height, pixel):
+    """真正的 Adam7 隔行 PNG：七个 pass 各带自己的行宽与 filter 字节。
+    A structurally valid Adam7 PNG: each of the seven passes carries its own row width and filter
+    byte, so libpng reads the header happily and the decoder has to be the one that refuses."""
+
+    def chunk(tag, data):
+        return (struct.pack(">I", len(data)) + tag + data
+                + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
+
+    passes = [(0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 2), (1, 0, 2, 2),
+              (0, 1, 1, 1)]
+    raw = b""
+    for x0, y0, xs, ys in passes:
+        pw = (width - x0 + xs - 1) // xs
+        ph = (height - y0 + ys - 1) // ys
+        if pw <= 0 or ph <= 0:
+            continue
+        for py in range(ph):
+            row = bytes(pixel(x0 + px * xs, y0 + py * ys) for px in range(pw))
+            raw += b"\x00" + row
+    with open(path, "wb") as handle:
+        handle.write(b"\x89PNG\r\n\x1a\n"
+                     + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 1))
+                     + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+    return len(raw)
+
+
 def write_ppm(path, width, height, rgb):
     with open(path, "wb") as handle:
         handle.write(b"P6\n%d %d\n255\n" % (width, height))
@@ -85,6 +112,8 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     write_png(os.path.join(OUT, "tiny.png"), 8, 8, lambda x, y: (x * 31 + y * 7) & 0xFF)
     write_png(os.path.join(OUT, "gray160x80.png"), 160, 80, lambda x, y: (x * 3 + y * 5) & 0xFF)
+    write_adam7_png(os.path.join(OUT, "interlaced.png"), 16, 8,
+                   lambda x, y: (x * 31 + y * 7) & 0xFF)
     write_ppm(os.path.join(OUT, "mono400.ppm"), 400, 640, mono)
     write_ppm(os.path.join(OUT, "chroma400.ppm"), 400, 640, chroma)
     if shutil.which("cjpeg") is None:

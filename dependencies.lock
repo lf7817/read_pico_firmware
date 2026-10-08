@@ -9,6 +9,20 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.7.19~2
+  espressif/libpng:
+    component_hash: 30b1f2f8ddf13754b3e21d7ac134b3cc8f02957bb01d0c6deb5e9a68080d69d5
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    - name: espressif/zlib
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.2.13
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.6.58
   espressif/qrcode:
     component_hash: 31e70991ce22f28d73a4386417fc9c0993f61e1aab1832474fd9e3db8da9dcbd
     dependencies: []
@@ -16,14 +30,25 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 0.2.0
+  espressif/zlib:
+    component_hash: 9083cada65f1c9d298ef92266232d071c6f2f335164e2799554b3eae73aedc55
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.1'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.3.2~1
   idf:
     source:
       type: idf
     version: 6.1.0
 direct_dependencies:
 - espressif/cjson
+- espressif/libpng
 - espressif/qrcode
 - idf
-manifest_hash: 15804665de5ccfbb784d3598fdc7e9322c498eb2c2681e2622ed0a03f16ecae9
+manifest_hash: daaa16066a561e3d0def10e9d5a3627b8f33aca3b6e5450ba5a77deebad87806
 target: esp32s3
 version: 3.0.0

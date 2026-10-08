@@ -38,3 +38,20 @@ build/book-tests/img_scale
 # The reference lives inside the test, so book_image.c is not linked here.
 gcc "${flags[@]}" -Itools/book_image_stubs tools/img_decode_host_test.c main/book/img_decode.c main/book/vendor/tjpgd.c -o build/book-tests/img_decode
 build/book-tests/img_decode
+# img_png 要宿主机 libpng 头文件（macOS 走 Homebrew，Linux 走发行包）。缺了就 SKIP，不算通过。
+# img_png needs host libpng headers (Homebrew on macOS, distro packages on Linux). Missing is a SKIP.
+png_flags=()
+for prefix in /opt/homebrew /usr/local /usr; do
+    [ -f "$prefix/include/png.h" ] && png_flags=(-I"$prefix/include" -L"$prefix/lib") && break
+done
+if [ ${#png_flags[@]} -eq 0 ]; then
+    echo "SKIP: img_png needs libpng development headers (png.h)"
+    exit 0
+fi
+# reader 桥在 img_decode.c 里，所以连它和它要的 TJpgDec 一起链进来。
+# The reader bridge lives in img_decode.c, so link it and the TJpgDec it needs.
+gcc "${flags[@]}" -Itools/book_image_stubs "${png_flags[@]}" tools/img_png_host_test.c \
+  main/book/img_png.c main/book/img_decode.c main/book/vendor/tjpgd.c -lpng \
+  -o build/book-tests/img_png
+build/book-tests/img_png
+build/book-tests/img_png

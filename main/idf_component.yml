@@ -1,2 +1,5 @@
 dependencies:
   espressif/qrcode: "0.2.0"
+  # A0 实测 "1.6.58~2" 这个修订号的制品在 components-file.espressif.com 返回 403，只写版本号。
+  # The 1.6.58~2 revision returns 403 from components-file.espressif.com, so pin the version only.
+  espressif/libpng: "1.6.58"

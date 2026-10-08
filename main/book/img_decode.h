@@ -53,3 +53,9 @@ typedef bool (*img_strip_cb)(void* ctx, const uint8_t* gray_rows, int row_count,
 bool img_decode_jpeg_strips(img_reader_t* r, uint8_t* work, size_t work_size,
                             uint8_t* strip_buffer, size_t strip_buffer_size, uint8_t scale,
                             img_strip_cb cb, void* cb_ctx, int* out_width, int* out_height);
+
+/// 解 PNG 为 Y 条带（libpng 实现在 img_png.c）。隔行图返回 false；不缩放，缩小由调用方做。
+/// Decode a PNG into Y strips (implemented in img_png.c). Interlaced images return false; no
+/// scaling happens here, the caller downsamples.
+bool img_decode_png_rows(img_reader_t* r, img_strip_cb cb, void* cb_ctx, int* out_width,
+                         int* out_height);
