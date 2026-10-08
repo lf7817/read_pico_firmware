@@ -3,6 +3,13 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.zh-CN.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-10-08 · lf7817
+
+- 修复：打开 EPUB 插图后整页像蒙了一层灰。那是上一页正文的残影——图片页此前走 GL16，白底保持、不先压黑，压不掉参考帧里的旧墨迹。进出图片预览改用整屏 GC16，返回正文时也不再留下插图的影子；整屏 GC16 实测 404 ms，比被替换掉的 GL16 463 ms 还快。
+  Fix the gray veil that appeared over an opened EPUB illustration: it was ghosting from the previous text page, because the preview used GL16, which keeps the white base and never blacks out first, so it cannot clear the old ink. Entering and leaving the preview now press with a full GC16, and the picture no longer ghosts onto the text either; a full GC16 measures 404 ms, faster than the 463 ms GL16 it replaces.
+- 插图：灰阶改为映射到真机屏摄签字的 6 档（0/3/6/B/D/F），中间灰用 blue noise 阈值按屏幕坐标抖动，不再直接截断成 16 档。正好落在某一档的灰（如实心对话气泡、灰色箭头）不再被拆成两档，近白区域不再留一层平灰；抖动不用误差扩散，所以差分重画局部时同一像素结果不变。
+  Illustrations now map gray onto the six panel-distinct levels signed off from screen capture (0/3/6/B/D/F), dithering intermediate grays with a blue-noise threshold keyed on screen coordinates instead of truncating to 16 levels. A gray that lands exactly on a level (a solid speech bubble, the gray arrows) is no longer split across two, and near-white areas lose their flat cast. Error diffusion is deliberately not used, so a partial repaint yields the same pixel.
+
 ## 2026-10-07 · lf7817
 
 - 阅读：进度行右端显示电量百分比；工具栏上沿在校时后显示日期与时间（ASCII 格式，如 10-07 Wed 21:40）加电量，未校时只显示电量、不显示假时间。

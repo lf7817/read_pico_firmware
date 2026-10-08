@@ -62,7 +62,7 @@ static int test_battery_calls,test_stats_init,test_stats_flush;
 static void sample_battery(void){test_battery_calls++;}
 static void read_stats_init(void){test_stats_init++;}
 static void read_stats_flush(int64_t now){(void)now;test_stats_flush++;}
-typedef enum {APP_REDRAW_PAGE,APP_REDRAW_AREA,APP_REDRAW_NONE} app_redraw_t;
+typedef enum {APP_REDRAW_PAGE,APP_REDRAW_AREA,APP_REDRAW_NONE,APP_REDRAW_FULL} app_redraw_t;
 typedef struct {int x,y,width,height;} EpdRect;
 static EpdRect ui_bar_rect(int i,int count){int width=(508-(count-1)*12)/count;return(EpdRect){40+i*(width+12),1096,width,96};}
 static bool ui_rect_hit(EpdRect r,int x,int y){return x>=r.x&&x<r.x+r.width&&y>=r.y&&y<r.y+r.height;}
@@ -197,21 +197,21 @@ int main(void) {
     image_event.type=UI_GESTURE_SWIPE_L;image_event.x=236;
     gesture_event(&image_ctx,&image_event);assert(test_turns==1 && test_image_loads==0 && !s_image_open);
     image_event.type=UI_GESTURE_TAP;image_event.x=300;
-    assert(gesture_event(&image_ctx,&image_event)==APP_REDRAW_PAGE && test_image_loads==1 && s_image_open);
+    assert(gesture_event(&image_ctx,&image_event)==APP_REDRAW_FULL && test_image_loads==1 && s_image_open);
     assert(s_image_pixels && strstr(s_image_origin,"第 3 节") && s_page==6 && s_chapter==9);
     image_event.type=UI_GESTURE_SWIPE_L;image_event.x=236;
     assert(gesture_event(&image_ctx,&image_event)==APP_REDRAW_NONE && test_turns==1 && s_image_open);
-    assert(on_key(&image_ctx,UI_KEY_3)==APP_REDRAW_PAGE && !s_image_open && test_turns==1 && s_page==6);
-    assert(open_image(&image_ctx,0)==APP_REDRAW_PAGE && test_image_loads==1);
+    assert(on_key(&image_ctx,UI_KEY_3)==APP_REDRAW_FULL && !s_image_open && test_turns==1 && s_page==6);
+    assert(open_image(&image_ctx,0)==APP_REDRAW_FULL && test_image_loads==1);
     image_event.type=UI_GESTURE_TAP;image_event.x=300;
-    assert(gesture_event(&image_ctx,&image_event)==APP_REDRAW_PAGE && !s_image_open && s_page==6);
+    assert(gesture_event(&image_ctx,&image_event)==APP_REDRAW_FULL && !s_image_open && s_page==6);
     test_image_error=ESP_ERR_NOT_FOUND;
-    assert(open_image(&image_ctx,1)==APP_REDRAW_PAGE && s_image_open && !s_image_pixels && s_image_error && test_image_loads==2);
-    assert(on_key(&image_ctx,UI_KEY_1)==APP_REDRAW_PAGE && !s_image_open && test_turns==1);
-    test_image_error=0;assert(open_image(&image_ctx,1)==APP_REDRAW_PAGE && s_image_pixels && test_image_loads==3);
+    assert(open_image(&image_ctx,1)==APP_REDRAW_FULL && s_image_open && !s_image_pixels && s_image_error && test_image_loads==2);
+    assert(on_key(&image_ctx,UI_KEY_1)==APP_REDRAW_FULL && !s_image_open && test_turns==1);
+    test_image_error=0;assert(open_image(&image_ctx,1)==APP_REDRAW_FULL && s_image_pixels && test_image_loads==3);
     free_image();assert(!s_image_open && !s_image_pixels && s_image_block==SIZE_MAX);
     image_blocks[0].image_title=true;
-    assert(open_image(&image_ctx,0)==APP_REDRAW_PAGE && !s_image_origin[0]);
+    assert(open_image(&image_ctx,0)==APP_REDRAW_FULL && !s_image_origin[0]);
     free_image();
     s_view=SHELF;
     app_ctx_t resume_ctx={0};

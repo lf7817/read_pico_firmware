@@ -46,6 +46,7 @@
 #include "book_progress.h"
 #include "book_source.h"
 #include "book_store.h"
+#include "img_dither.h"
 #include "display.h"
 #include "e0470_epaper_waveform.h"
 #include "esp_heap_caps.h"
@@ -526,7 +527,9 @@ static void free_image(void) {
 static app_redraw_t close_image(void) {
     s_image_open = false;
     invalidate_prep();
-    return APP_REDRAW_PAGE;
+    // 图上的中灰填充得靠 GC16 压掉，GL16 不压黑，回正文会留着图的残影。
+    // The gray fills in the image need a GC16 press; GL16 keeps them and ghosts onto the text page.
+    return APP_REDRAW_FULL;
 }
 
 /* ---- 本章剩余时间 / Remaining time in this chapter ---- */
@@ -725,7 +728,12 @@ static void draw_image(uint8_t* fb) {
         for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
             size_t src = (size_t)((int64_t)y * s_image_height / height) * s_image_width +
                          (size_t)((int64_t)x * s_image_width / width);
-            epd_draw_pixel(left + x, y0 + y, s_image_pixels[src], fb);
+            int px = left + x, py = y0 + y;
+            // 抖动阈值按屏幕坐标取，差分重画局部时同一像素结果不变。
+            // The threshold is keyed on screen coordinates, so a partial repaint yields the same pixel.
+            // epd_draw_pixel 取的是 color 的高 nibble，所以档位要左移四位。
+            // epd_draw_pixel reads the high nibble of color, hence the shift.
+            epd_draw_pixel(px, py, (uint8_t)(img_dither_gray_to_4bpp(s_image_pixels[src], px, py) << 4), fb);
         }
     } else ui_text(fb, area.x, area.y + area.height / 2, UI_PX_CAPTION,
                    s_image_error ? s_image_error : "图片不可用", EPD_DRAW_ALIGN_LEFT, false);
@@ -902,7 +910,12 @@ static app_redraw_t open_image(app_ctx_t* ctx, size_t block_index) {
     s_image_open = true;
     s_size_settle_ms = 0;
     invalidate_prep();
-    return APP_REDRAW_PAGE;
+    // 正文页的字得靠 GC16 压掉：GL16 白底保持、不先压黑，压不掉参考帧里的旧墨迹，
+    // 图一打开就像蒙了一层灰（屏摄实证：上半屏留着正文行，页脚残影在"返回正文"旁边）。
+    // The previous text page has to be pressed out with GC16: GL16 keeps the white base and never
+    // blacks out first, so it leaves the old ink as a veil (seen on screen capture: body lines
+    // above the illustration, and the footer ghost next to the return button).
+    return APP_REDRAW_FULL;
 }
 
 static const char* book_error_message(esp_err_t err) {
