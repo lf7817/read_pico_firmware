@@ -62,3 +62,12 @@ gcc "${flags[@]}" -DBOOK_HEAP_TRACK -Itools/book_epub_stubs -Itools/book_image_s
   main/book/img_dither.c main/book/img_decode.c main/book/img_png.c main/book/vendor/tjpgd.c \
   tools/book_heap_track.c -lpng -lz -o build/book-tests/img_plane
 build/book-tests/img_plane
+# thumb_cache 链进整条图像管线，所以它需要与 img_plane 相同的平台替身。
+# thumb_cache links the whole image pipeline, so it needs the same platform shims as img_plane.
+gcc "${flags[@]}" "${png_flags[@]}" -Itools/book_image_stubs -Itools/book_layout_stubs \
+  tools/thumb_cache_host_test.c main/book/thumb_cache.c \
+  main/book/img_plane.c main/book/img_scale.c main/book/img_dither.c main/book/img_decode.c \
+  main/book/img_png.c main/book/vendor/tjpgd.c -lpng -lz -o build/book-tests/thumb_cache
+build/book-tests/thumb_cache
+gcc "${flags[@]}" tools/book_cover_host_test.c main/book/book_cover.c -o build/book-tests/book_cover
+build/book-tests/book_cover
