@@ -6,6 +6,7 @@
 set -euo pipefail
 mkdir -p build/book-tests
 python tools/gen_book_fixtures.py
+python tools/gen_image_fixtures.py > /dev/null   # img_decode 的 JPEG 夹具 / fixtures for img_decode
 flags=(-std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-omit-frame-pointer -Imain/book)
 # 丢掉未引用段的链接选项按链接器分支：GNU ld 认 --gc-sections，macOS 的 ld 只认 -dead_strip。
 # Dead-strip is linker-specific: GNU ld takes --gc-sections, macOS ld only understands -dead_strip.
@@ -33,3 +34,7 @@ gcc "${flags[@]}" tools/img_dither_host_test.c main/book/img_dither.c -o build/b
 build/book-tests/img_dither
 gcc "${flags[@]}" tools/img_scale_host_test.c main/book/img_scale.c -o build/book-tests/img_scale
 build/book-tests/img_scale
+# 对照实现在测试内部（同一档 TJpgDec 写整图），所以这里不链 book_image.c。
+# The reference lives inside the test, so book_image.c is not linked here.
+gcc "${flags[@]}" -Itools/book_image_stubs tools/img_decode_host_test.c main/book/img_decode.c main/book/vendor/tjpgd.c -o build/book-tests/img_decode
+build/book-tests/img_decode
