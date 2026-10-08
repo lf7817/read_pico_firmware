@@ -3,6 +3,11 @@
 按日期和作者简述对用户可见的功能变化；详细实现历史见 Git。使用方法见 [README](../README.zh-CN.md)。
 User-visible changes by date and author; Git retains implementation history. See [README](../README.md) for usage.
 
+## 2026-10-09 · lf7817
+
+- 插图：预览图改在加载期完成缩放与灰阶映射（整数加权面积平均 + blue noise 抖动到签字 6 档），替代原来在绘制期做的最近邻放大与 16 档截断；支持的图片范围不变（PNG 与渐进 JPEG 1M 像素、基线 JPEG 16M 像素、单边 8192）。
+  Illustration previews now finish scaling and gray mapping while loading (integer weighted area averaging plus blue-noise dithering onto the six signed-off levels) instead of nearest-neighbour enlargement and 16-level truncation at paint time. The supported image scope is unchanged (1M pixels for PNG and progressive JPEG, 16M for baseline JPEG, 8192 per side).
+
 ## 2026-10-08 · lf7817
 
 - 修复：打开 EPUB 插图后整页像蒙了一层灰。那是上一页正文的残影——图片页此前走 GL16，白底保持、不先压黑，压不掉参考帧里的旧墨迹。进出图片预览改用整屏 GC16，返回正文时也不再留下插图的影子；整屏 GC16 实测 404 ms，比被替换掉的 GL16 463 ms 还快。
