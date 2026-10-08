@@ -39,6 +39,16 @@ def gray_jpeg(width, height, overshoot=False):
     entropy=bytes(int(bitstream[i:i+8],2) for i in range(0,len(bitstream),8)).replace(b'\xff',b'\xff\0')
     return b'\xff\xd8' + dqt + sof + dht + sos + entropy + b'\xff\xd9'
 
+def interlaced_png(width=16, height=8):
+    """IHDR 声明 interlace=1 的最小 PNG。尺寸探测只读头，所以不必真写 Adam7 数据。
+    Minimal PNG whose IHDR declares interlace=1; the size probe reads headers only, so no Adam7 payload."""
+    def chunk(tag, data):
+        return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', zlib.crc32(tag + data))
+    return (b'\x89PNG\r\n\x1a\n'
+            + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 0, 0, 0, 1))
+            + chunk(b'IEND', b''))
+
+
 def filtered_png(color, filter_type):
     def chunk(tag,data):
         return struct.pack('>I',len(data))+tag+data+struct.pack('>I',zlib.crc32(tag+data))
@@ -82,6 +92,7 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     (work / 'alpha.png').write_bytes(png())
     (work / 'gray.jpg').write_bytes(JPEG)
+    (work / 'interlaced.png').write_bytes(interlaced_png())
     for name, width, height in [('cover',1000,1333),('tall',1080,2400),('edge',9,17)]:
         (work / (name + '.jpg')).write_bytes(gray_jpeg(width,height))
     book = work / 'images.epub'
@@ -98,7 +109,7 @@ def main():
     exe = work / 'test'
     sources = ['tools/book_image_host_test.c', 'main/book/book_image.c', 'main/book/vendor/tjpgd.c', 'main/book/book_epub.c', 'main/book/html_text.c', 'main/book/zip_reader.c']
     subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-g', '-fsanitize=address,undefined', '-Itools/book_image_stubs', '-Itools/book_epub_stubs', '-Itools/zip_host_stubs', '-Imain/book', *sources, '-lz', '-o', str(exe)], cwd=ROOT, check=True)
-    subprocess.run([str(exe), str(work / 'alpha.png'), str(work / 'gray.jpg'), str(book), *[str(work / (n + '.jpg')) for n in ['cover','tall','edge']]], check=True, env={**os.environ, 'UBSAN_OPTIONS':'halt_on_error=1'})
+    subprocess.run([str(exe), str(work / 'alpha.png'), str(work / 'gray.jpg'), str(book), *[str(work / (n + '.jpg')) for n in ['cover','tall','edge']], str(work / 'interlaced.png')], check=True, env={**os.environ, 'UBSAN_OPTIONS':'halt_on_error=1'})
     for color in [0,2,3,4,6]:
         for filter_type in range(5):
             data,expected=filtered_png(color,filter_type)

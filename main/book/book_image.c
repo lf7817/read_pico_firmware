@@ -261,3 +261,45 @@ bool book_image_decode(const uint8_t* data, size_t len, size_t budget,
     *pixels = out; *width = (uint16_t)dw; *height = (uint16_t)dh;
     return true;
 }
+
+/* ---- 尺寸探测 / Header-only sizing ---- */
+
+bool book_image_size_ex(const uint8_t* data, size_t len, uint16_t* width, uint16_t* height,
+                        bool* interlaced) {
+    if (width) *width = 0;
+    if (height) *height = 0;
+    if (interlaced) *interlaced = false;
+    if (!data || !width || !height || len < 8) return false;
+    if (!memcmp(data, "\x89PNG\r\n\x1a\n", 8)) {
+        if (len < 33 || png_u32(data + 8) != 13 || memcmp(data + 12, "IHDR", 4)) return false;
+        uint32_t w = png_u32(data + 16), h = png_u32(data + 20);
+        if (!w || !h || w > 0xFFFFu || h > 0xFFFFu) return false;   // 只报头里写得下的数 / header range only
+        *width = (uint16_t)w; *height = (uint16_t)h;
+        if (interlaced) *interlaced = (data[28] != 0);
+        return true;
+    }
+    if (data[0] != 0xFF || data[1] != 0xD8) return false;
+    size_t at = 2;
+    while (at + 9 <= len) {                       // 要读到 data[at+8] / the widest byte this walk touches
+        if (data[at] != 0xFF) return false;
+        uint8_t marker = data[at + 1];
+        if (marker == 0xFF) { ++at; continue; }   // 连续 FF 是填充字节 / consecutive FF is padding
+        if (marker == 0x00 || marker == 0x01 || (marker >= 0xD0 && marker <= 0xD9)) { at += 2; continue; }
+        uint32_t seg = (uint32_t)((data[at + 2] << 8) | data[at + 3]);
+        if (seg < 2 || at + 2u + seg > len) return false;
+        if (marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC) {
+            if (seg < 7) return false;            // 精度 1 + 高 2 + 宽 2 / precision, height, width
+            uint32_t h = (uint32_t)((data[at + 5] << 8) | data[at + 6]);
+            uint32_t w = (uint32_t)((data[at + 7] << 8) | data[at + 8]);
+            if (!w || !h || w > 0xFFFFu || h > 0xFFFFu) return false;
+            *width = (uint16_t)w; *height = (uint16_t)h;
+            return true;
+        }
+        at += 2u + seg;
+    }
+    return false;
+}
+
+bool book_image_size(const uint8_t* data, size_t len, uint16_t* width, uint16_t* height) {
+    return book_image_size_ex(data, len, width, height, NULL);
+}

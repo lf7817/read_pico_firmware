@@ -44,6 +44,35 @@ static void check_image(const char* path, bool png) {
     }
     free(data);
 }
+static void check_size_probe(const char* png_path, const char* jpeg_path, const char* big_path,
+                             const char* interlaced_path) {
+    size_t png_len = 0, jpeg_len = 0, big_len = 0, inter_len = 0;
+    uint8_t* png = read_file(png_path, &png_len);
+    uint8_t* jpeg = read_file(jpeg_path, &jpeg_len);
+    uint8_t* big = read_file(big_path, &big_len);
+    uint16_t w = 0, h = 0;
+    bool interlaced = true;
+    assert(book_image_size(png, png_len, &w, &h) && w == 16 && h == 8);
+    assert(book_image_size_ex(png, png_len, &w, &h, &interlaced) && !interlaced);
+    assert(book_image_size(jpeg, jpeg_len, &w, &h) && w == 16 && h == 8);
+    // 分页期要的是源尺寸，不是解码后被钳到的 648x863。
+    // Pagination needs the source size, not the 648x863 the decoder clamps it to.
+    assert(book_image_size(big, big_len, &w, &h) && w == 1000 && h == 1333);
+    // 只给到头部也要拿到尺寸：夹具的 SOF0 落在第 71 字节。
+    // A header-only prefix still yields the size: this fixture carries SOF0 at byte 71.
+    assert(book_image_size(big, 96, &w, &h) && w == 1000 && h == 1333);
+    w = h = 7;
+    assert(!book_image_size(big, 40, &w, &h) && !w && !h);   // SOF 之前截断 / cut before the SOF
+    assert(!book_image_size((const uint8_t*)"not an image", 12, &w, &h) && !w && !h);
+    assert(!book_image_size(big, 3, &w, &h));
+    if (interlaced_path) {
+        uint8_t* inter = read_file(interlaced_path, &inter_len);
+        w = h = 0;
+        assert(book_image_size_ex(inter, inter_len, &w, &h, &interlaced) && w == 16 && h == 8 && interlaced);
+        free(inter);
+    }
+    free(png); free(jpeg); free(big);
+}
 int main(int argc,char** argv) {
     if(argc==4 && !strcmp(argv[1],"--expect")) {
         size_t len,n;uint8_t* data=read_file(argv[2],&len),*expected=read_file(argv[3],&n),*pixels=NULL;uint16_t w,h;
@@ -58,8 +87,9 @@ int main(int argc,char** argv) {
         if(ok){char path[1024];snprintf(path,sizeof(path),"%s.pgm",argv[2]);FILE* f=fopen(path,"wb");assert(f);fprintf(f,"P5\n%u %u\n255\n",w,h);fwrite(pixels,1,(size_t)w*h,f);fclose(f);}
         free(data);free(pixels);return 0;
     }
-    assert(argc==7);
+    assert(argc == 7 || argc == 8);
     check_image(argv[1],true);check_image(argv[2],false);
+    check_size_probe(argv[1], argv[2], argv[4], argc == 8 ? argv[7] : NULL);
     const unsigned expected[][2]={{648,863},{450,1000},{9,17}};
     for(int i=0;i<3;++i) {
         size_t len;uint8_t* data=read_file(argv[i+4],&len),*pixels=NULL;uint16_t w,h;
