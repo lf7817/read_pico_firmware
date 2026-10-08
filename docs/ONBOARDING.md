@@ -391,7 +391,7 @@ flowchart TD
 - [ ] `render()` 仍然纯。
 - [ ] 没有改 `app_loop.c` 来加页面功能。
 - [ ] 没有提交 `sdkconfig`、`build/`、`.vscode/`、`managed_components/`。
-- [ ] 跑过全套宿主机回归（§11.3）。CI 只编译不跑测试，这些套件只有本机跑得起来。
+- [ ] 跑过全套宿主机回归（§11.3，一条 `bash tools/run_all_host_tests.sh`）。CI 只编译不跑测试，这些套件只有本机跑得起来。
 - [ ] 三份 README 同步。
 
 ---
@@ -440,15 +440,23 @@ flowchart TD
 CI 只做 `idf.py build` + `size`，**不跑任何宿主机测试**；所以下面这套只有本机跑得起来，改了 `main/**`、`components/**` 或 `tools/**` 就必须跑：
 
 ```sh
-for s in tools/run_*.sh; do bash "$s"; done        # 六个套件，全部要 PASS
-python3 tools/test_fatfs_filenames.py              # 需要 IDF_PATH：在 eim shell / 容器里跑
-python3 tools/test_wifi_qr_decode.py               # 需要 Pillow + zxing-cpp
+bash tools/run_all_host_tests.sh                 # 一条命令跑完，全部要 PASS；SKIP 会单独列出来
 ```
 
-两个 `test_*.py` 缺依赖时会打印 `SKIP: ...` 并以非 0 退出（故意的：**SKIP 不等于通过**）。FatFs 长文件名
-那份要在 `printf 'python3 tools/test_fatfs_filenames.py\nexit\n' | eim shell` 里跑一次才算；二维码解码那份
-要先装 `pillow` 与 `zxing-cpp`。2026-10-08 那次修复前，`run_app_loop_host_tests.sh` 与
-`run_book_management_tests.sh` 已经因为 N1/N4/N5/N6 新增的符号连续红了四个提交没人发现——就是缺这一步。
+它等于 `for s in tools/run_*.sh` 加上所有独立的 Python 套件（`tools/test_*.py`、`tools/*_host_test.py`、
+`tools/transfer_stack_check.py`）。缺依赖的套件会打印 `SKIP: ...` 并以非 0 退出；脚本把它们**单独列成
+SKIP 而不是 PASS**（故意的：**SKIP 不等于通过**）。FatFs 长文件名那份要在
+`printf 'python3 tools/test_fatfs_filenames.py\nexit\n' | eim shell` 里跑一次才算；二维码解码那份
+要先装 `pillow` 与 `zxing-cpp`。
+
+两次真实事故都因为没跑这一步：2026-10-08 修复前，`run_app_loop_host_tests.sh` 与
+`run_book_management_tests.sh` 因为 N1/N4/N5/N6 新增的符号连续红了四个提交没人发现；同日补上这条之后，
+`tools/book_ui_host_test.py` 仍然在网外——它不在 `run_*.sh` 里，改 `app_book.c` 的返回值时"六个套件全绿"
+照样漏掉它。所以现在按**文件名通配**收全，而不是列清单。
+
+注意 `tools/book_ui_host_test.py` 是按大括号配对从 `app_book.c` 里抽函数的，**注释里的英文撇号（`'`）
+会让它误判成进入字符串、把后面的函数一起抽走**。给这个文件加注释时不要写撇号（用 "the gray fills"
+而不是 "the illustration's fills"）。
 
 ---
 
