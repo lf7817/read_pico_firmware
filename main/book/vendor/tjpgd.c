@@ -899,7 +899,16 @@ static JRESULT mcu_load (
 
             if (JD_FORMAT != 2 || !cmp) {   /* C components may not be processed if in grayscale output */
                 if (z == 1 || (JD_USE_SCALE && jd->scale == 3)) {   /* If no AC element or scale ratio is 1/8, IDCT can be omitted and the block is filled with DC value */
-                    d = (jd_yuv_t)((*tmp / 256) + 128);
+                    /* 本地修改 / local change: 钳位 DC 直填块的亮度。上游这里直接转 jd_yuv_t，
+                     * 溢出值在一级优化下按 uint8 截断（263→7），非一级优化下又把 263 留给灰度输出截断；
+                     * 只有 RGB+一级优化那条路恰好被后面的 BYTECLIP 救回 255。饱和才是 libjpeg 的行为。
+                     * Clamp the DC-only block: the upstream cast truncates an overflowing luminance
+                     * (263 -> 7) in the uint8 storage, or defers the truncation to the grayscale
+                     * output at higher fast-decode levels. Saturation matches libjpeg. */
+                    d = (*tmp / 256) + 128;
+                    if (d > 255) d = 255;
+                    else if (d < 0) d = 0;
+                    d = (jd_yuv_t)d;
                     if (JD_FASTDECODE >= 1) {
                         for (i = 0; i < 64; bp[i++] = d) ;
                     } else {

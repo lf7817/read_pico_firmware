@@ -157,27 +157,25 @@ def overshoot_fixture():
     return target
 
 
-def gray_is_truncating():
-    """Characterisation test: the grayscale path truncates, the shipped RGB path saturates.
+def grayscale_saturates():
+    """Regression for the local clamp: every config must saturate an overflowing block like libjpeg.
 
-    现状刻画：灰度直出会截断溢出亮度，RGB 档会饱和。哪天上游或本地补丁改了这条，本用例就会失败并
-    提醒重新评估 `JD_FORMAT 2`；在此之前它就是 11.4 里那个闸门的看门人。
+    本地钳位的回归：DC 冲过头的夹具在四档配置下都必须像 libjpeg 那样饱和到 255。
+    钳位被改掉时这里会失败——那正是它存在的目的（spec 11.4 记录了原因）。
     """
     fixture = overshoot_fixture()
     reference = reference_gray(fixture, "build/img-fixtures/overshoot-gray.pgm")
     if reference is None:
-        print("SKIP: djpeg unavailable, cannot characterise the grayscale truncation")
-        return True
-    rgb = measure(build_config(0, 1), fixture)
-    gray = measure(build_config(2, 0), fixture)
-    print("\nDC-overshoot fixture (reference Y = %d): RGB mean %.1f, grayscale mean %.1f"
-          % (reference["mean"], rgb["mean"], gray["mean"]))
-    assert abs(rgb["mean"] - reference["mean"]) < 1.0, \
-        "the shipped RGB path no longer saturates like the reference: %s vs %s" % (rgb, reference)
-    assert gray["mean"] < reference["mean"] - 100, \
-        "grayscale output now saturates; re-evaluate JD_FORMAT 2 (see spec 11.4)"
-    print("PASS: grayscale output still truncates overflowing luminance, so JD_FORMAT stays 0")
-    return True
+        print("SKIP: djpeg unavailable, cannot check grayscale saturation")
+        return
+    print("\nDC-overshoot fixture (reference Y = %.1f):" % reference["mean"])
+    for fmt, fast in ((2, 0), (2, 1), (0, 0), (0, 1)):
+        got = measure(build_config(fmt, fast), fixture)
+        print("  F%d D%d mean %.1f" % (fmt, fast, got["mean"]))
+        assert abs(got["mean"] - reference["mean"]) < 1.0, (
+            "config F%d D%d lost the DC-overshoot clamp: %.1f vs reference %.1f"
+            % (fmt, fast, got["mean"], reference["mean"]))
+    print("PASS: every config saturates overflowing luminance, so JD_FORMAT 2 is safe")
 
 
 def main():
@@ -213,11 +211,10 @@ def main():
         assert abs(wdelta) < 1.0, "grayscale output differs locally: weighted %+.3f%%" % wdelta
         assert gray["min"] <= ref["min"] + 1 and gray["max"] >= ref["max"] - 1, \
             "grayscale output clipped away the extremes: %s vs %s" % (gray, ref)
-        print("PASS: JD_FORMAT 2 matches the reference Y while values stay in range; "
-              "the DC-overshoot case below is the blocker")
+        print("PASS: JD_FORMAT 2 matches the reference Y within IDCT rounding")
     else:
         print("SKIP: djpeg unavailable, so the gray config is unverified against a reference")
-    gray_is_truncating()
+    grayscale_saturates()
     return 0
 
 

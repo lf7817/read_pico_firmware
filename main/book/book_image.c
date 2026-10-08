@@ -183,12 +183,13 @@ static int jpeg_write(JDEC* jd, void* bitmap, JRECT* r) {
     unsigned x1 = ((unsigned)(r->right + 1) * io->width + io->scaled_width - 1) / io->scaled_width;
     unsigned y0 = ((unsigned)r->top * io->height + io->scaled_height - 1) / io->scaled_height;
     unsigned y1 = ((unsigned)(r->bottom + 1) * io->height + io->scaled_height - 1) / io->scaled_height;
-    const uint8_t* rgb = bitmap;
+    const uint8_t* gray = bitmap;
+    // JD_FORMAT 2：块里每像素已经是一位 Y，不再按三字节读、也不再转换。
+    // JD_FORMAT 2 delivers one Y byte per pixel; no RGB stride and no conversion.
     for (unsigned y = y0; y < y1; ++y) for (unsigned x = x0; x < x1; ++x) {
         unsigned sx = x * io->scaled_width / io->width - r->left;
         unsigned sy = y * io->scaled_height / io->height - r->top;
-        const uint8_t* color = rgb + (sy * (r->right - r->left + 1) + sx) * 3;
-        io->out[(size_t)y * io->width + x] = (uint8_t)((77u*color[0]+150u*color[1]+29u*color[2])>>8);
+        io->out[(size_t)y * io->width + x] = gray[sy * (r->right - r->left + 1) + sx];
     }
 #ifdef ESP_PLATFORM
     // 大图也定期让出 CPU，避免空闲任务看门狗饥饿。/ Yield during large images so idle watchdog tasks can run.
