@@ -391,6 +391,7 @@ flowchart TD
 - [ ] `render()` 仍然纯。
 - [ ] 没有改 `app_loop.c` 来加页面功能。
 - [ ] 没有提交 `sdkconfig`、`build/`、`.vscode/`、`managed_components/`。
+- [ ] 跑过全套宿主机回归（§11.3）。CI 只编译不跑测试，这些套件只有本机跑得起来。
 - [ ] 三份 README 同步。
 
 ---
@@ -433,6 +434,21 @@ flowchart TD
 - **git 身份**：`user.name` / `user.email` 未配置时会报 `Author identity unknown`。由人类自己填（GitHub 用户名 + `<id>+<user>@users.noreply.github.com`）；agent **不得从 `git log` 推断身份**——最近提交的作者很可能是上游维护者，已经错过一次。
 - 推送前 `git remote -v` + `git push --dry-run`，确认目标是自己的 fork（`origin`）而不是 `upstream`。
 - 容器 build 后只因 EOL 变脏的 `dependencies.lock` 不要提交（§3.3）。
+
+### 11.3 宿主机回归（提交前必跑）
+
+CI 只做 `idf.py build` + `size`，**不跑任何宿主机测试**；所以下面这套只有本机跑得起来，改了 `main/**`、`components/**` 或 `tools/**` 就必须跑：
+
+```sh
+for s in tools/run_*.sh; do bash "$s"; done        # 六个套件，全部要 PASS
+python3 tools/test_fatfs_filenames.py              # 需要 IDF_PATH：在 eim shell / 容器里跑
+python3 tools/test_wifi_qr_decode.py               # 需要 Pillow + zxing-cpp
+```
+
+两个 `test_*.py` 缺依赖时会打印 `SKIP: ...` 并以非 0 退出（故意的：**SKIP 不等于通过**）。FatFs 长文件名
+那份要在 `printf 'python3 tools/test_fatfs_filenames.py\nexit\n' | eim shell` 里跑一次才算；二维码解码那份
+要先装 `pillow` 与 `zxing-cpp`。2026-10-08 那次修复前，`run_app_loop_host_tests.sh` 与
+`run_book_management_tests.sh` 已经因为 N1/N4/N5/N6 新增的符号连续红了四个提交没人发现——就是缺这一步。
 
 ---
 
