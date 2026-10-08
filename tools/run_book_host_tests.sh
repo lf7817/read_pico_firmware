@@ -31,3 +31,5 @@ gcc "${flags[@]}" -Itools/html_text_stubs tools/html_text_host_test.c main/book/
 build/book-tests/html
 gcc "${flags[@]}" tools/img_dither_host_test.c main/book/img_dither.c -o build/book-tests/img_dither
 build/book-tests/img_dither
+gcc "${flags[@]}" tools/img_scale_host_test.c main/book/img_scale.c -o build/book-tests/img_scale
+build/book-tests/img_scale
