@@ -8,13 +8,15 @@ mkdir -p build/book-tests
 python tools/gen_book_fixtures.py
 python tools/gen_image_fixtures.py > /dev/null   # img_decode 的 JPEG 夹具 / fixtures for img_decode
 flags=(-std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-omit-frame-pointer -Imain/book)
+source tools/host_image_deps.sh
 # 丢掉未引用段的链接选项按链接器分支：GNU ld 认 --gc-sections，macOS 的 ld 只认 -dead_strip。
 # Dead-strip is linker-specific: GNU ld takes --gc-sections, macOS ld only understands -dead_strip.
 case "$(uname)" in
     Darwin) gc_sections=(-Wl,-dead_strip) ;;
     *) gc_sections=(-Wl,--gc-sections) ;;
 esac
-gcc "${flags[@]}" -Itools/book_epub_stubs -Itools/zip_host_stubs tools/book_source_host_test.c main/book/book_source.c main/book/book_txt.c main/book/gbk.c main/book/book_epub.c main/book/zip_reader.c main/book/html_text.c main/book/book_image.c main/book/vendor/tjpgd.c -lz -o build/book-tests/source
+gcc "${flags[@]}" -Itools/book_epub_stubs -Itools/zip_host_stubs -Itools/book_layout_stubs -Itools/book_image_stubs \
+  "${png_flags[@]}" tools/book_source_host_test.c main/book/book_source.c main/book/book_txt.c main/book/gbk.c main/book/book_epub.c main/book/zip_reader.c main/book/html_text.c main/book/book_image.c "${image_pipeline[@]}" tools/test_display_stub.c -lpng -lz -o build/book-tests/source
 gcc "${flags[@]}" -Itools/book_layout_stubs -Itools/book_source_host_stubs tools/book_layout_host_test.c main/book/book_layout.c -o build/book-tests/layout
 gcc "${flags[@]}" -Itools/book_storage_stubs tools/book_storage_host_test.c main/book/book_progress.c -o build/book-tests/progress
 gcc "${flags[@]}" -Itools/book_storage_stubs -Icomponents/read_pico/include tools/book_store_host_test.c -o build/book-tests/store
@@ -38,16 +40,6 @@ build/book-tests/img_scale
 # The reference lives inside the test, so book_image.c is not linked here.
 gcc "${flags[@]}" -Itools/book_image_stubs tools/img_decode_host_test.c main/book/img_decode.c main/book/vendor/tjpgd.c -o build/book-tests/img_decode
 build/book-tests/img_decode
-# img_png 要宿主机 libpng 头文件（macOS 走 Homebrew，Linux 走发行包）。缺了就 SKIP，不算通过。
-# img_png needs host libpng headers (Homebrew on macOS, distro packages on Linux). Missing is a SKIP.
-png_flags=()
-for prefix in /opt/homebrew /usr/local /usr; do
-    [ -f "$prefix/include/png.h" ] && png_flags=(-I"$prefix/include" -L"$prefix/lib") && break
-done
-if [ ${#png_flags[@]} -eq 0 ]; then
-    echo "SKIP: img_png needs libpng development headers (png.h)"
-    exit 0
-fi
 # reader 桥在 img_decode.c 里，所以连它和它要的 TJpgDec 一起链进来。
 # The reader bridge lives in img_decode.c, so link it and the TJpgDec it needs.
 gcc "${flags[@]}" -Itools/book_image_stubs "${png_flags[@]}" tools/img_png_host_test.c \
@@ -71,3 +63,7 @@ gcc "${flags[@]}" "${png_flags[@]}" -Itools/book_image_stubs -Itools/book_layout
 build/book-tests/thumb_cache
 gcc "${flags[@]}" tools/book_cover_host_test.c main/book/book_cover.c -o build/book-tests/book_cover
 build/book-tests/book_cover
+if [ "$png_ready" = 0 ]; then
+    echo "SKIP: img_png, img_plane and thumb_cache need libpng development headers (png.h)"
+    exit 1
+fi

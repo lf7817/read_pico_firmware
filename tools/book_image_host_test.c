@@ -6,11 +6,18 @@
  */
 #include "book_image.h"
 #include "book_epub.h"
+#include "img_plane.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 int image_fail_after = -1;
+
+// img_plane 的 blit 要 epd_draw_pixel；本测试不画屏，给个空实现。
+// img_plane's blit references epd_draw_pixel; this test never paints, so stub it out.
+void epd_draw_pixel(int x, int y, uint8_t color, uint8_t* framebuffer) {
+    (void)x; (void)y; (void)color; (void)framebuffer;
+}
 static uint8_t* read_file(const char* path, size_t* size) {
     FILE* f = fopen(path,"rb"); assert(f);
     assert(!fseek(f,0,SEEK_END)); long n=ftell(f); assert(n>=0); rewind(f);
@@ -106,18 +113,25 @@ int main(int argc,char** argv) {
     // 每次只解码明确请求的图片；失败不改正文与块表。/ Decode only the requested image; failures leave text and blocks intact.
     decoded=0;
     for(size_t i=0;i<text.count;++i) if(text.blocks[i].image_src) {
-        uint8_t* pixels=NULL;uint16_t w=0,h=0;
-        esp_err_t err=book_epub_load_image(book,0,text.blocks[i].image_src,&pixels,&w,&h);
-        if(err==ESP_OK){++decoded;assert(pixels && w==16 && h==8);free(pixels);}
-        else assert(!pixels && !w && !h);
+        img_plane_t plane={0};
+        esp_err_t err=book_epub_load_image(book,0,text.blocks[i].image_src,&plane,604,1064);
+        if(err==ESP_OK){++decoded;assert(plane.nib && plane.width==16 && plane.height==8);img_plane_free(&plane);}
+        else assert(!plane.nib && !plane.width && !plane.height);
         assert(!text.blocks[i].image && !text.blocks[i].image_repeated && !text.blocks[i].image_title);
     }
     assert(decoded==2 && strstr(text.utf8,"before") && strstr(text.utf8,"after"));
-    uint8_t* pixels=NULL;uint16_t w=0,h=0;
+    img_plane_t plane={0};
     image_fail_after=0;
-    assert(book_epub_load_image(book,0,"../images/gray.jpg",&pixels,&w,&h)!=ESP_OK && !pixels && !w && !h);
+    assert(book_epub_load_image(book,0,"../images/gray.jpg",&plane,604,1064)!=ESP_OK && !plane.nib);
     image_fail_after=-1;
-    assert(book_epub_load_image(book,0,"../images/gray.jpg",&pixels,&w,&h)==ESP_OK);free(pixels);
+    assert(book_epub_load_image(book,0,"../images/gray.jpg",&plane,604,1064)==ESP_OK);
+    assert(plane.width==16 && plane.height==8);
+    // 1/8 档以下不放大：给一个比源还小的盒子，平面必须正好等于盒子且不超过源。
+    // Never enlarged: a box smaller than the source yields a plane that fits it exactly.
+    img_plane_free(&plane);
+    assert(book_epub_load_image(book,0,"../images/gray.jpg",&plane,8,4)==ESP_OK);
+    assert(plane.width==8 && plane.height==4);
+    img_plane_free(&plane);
     html_text_free(&text);
     assert(book_epub_load(book,1,&text)==ESP_OK && text.count==2);
     for(size_t i=0;i<text.count;++i) assert(!text.blocks[i].image && text.blocks[i].image_repeated && text.blocks[i].image_first_chapter==0);

@@ -18,15 +18,20 @@ python tools/test_book_epub.py
 
 flags=(-std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-omit-frame-pointer)
 includes=(-Itools/book_epub_stubs -Itools/zip_host_stubs -Imain/book)
+source tools/host_image_deps.sh
 cc "${flags[@]}" -Itools/html_text_stubs -Imain/book tools/html_text_host_test.c main/book/html_text.c -o build/book-tests/epub-html
 build/book-tests/epub-html
 
 # 同时链接 TXT 与 EPUB，防止分派变更破坏旧书源。
 # Link TXT and EPUB together so dispatch changes retain the existing source behavior.
-cc "${flags[@]}" "${includes[@]}" tools/book_source_host_test.c \
+cc "${flags[@]}" "${includes[@]}" "${image_includes[@]}" "${png_flags[@]}" tools/book_source_host_test.c \
     main/book/book_source.c main/book/book_txt.c main/book/gbk.c \
-    main/book/book_epub.c main/book/zip_reader.c main/book/html_text.c main/book/book_image.c main/book/vendor/tjpgd.c \
-    -lz -o build/book-tests/epub-source
+    main/book/book_epub.c main/book/zip_reader.c main/book/html_text.c main/book/book_image.c \
+    "${image_pipeline[@]}" tools/test_display_stub.c -lpng -lz -o build/book-tests/epub-source
 shopt -s nullglob
 fixtures=(build/book-fixtures/books/*.txt build/book-fixtures/books/*.epub)
 build/book-tests/epub-source "${fixtures[@]}"
+if [ "$png_ready" = 0 ]; then
+    echo "SKIP: the EPUB source suite needs libpng development headers (png.h)"
+    exit 1
+fi

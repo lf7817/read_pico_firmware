@@ -18,6 +18,14 @@
 bool book_image_decode(const uint8_t* data, size_t len, size_t budget,
                        uint8_t** pixels, uint16_t* width, uint16_t* height);
 
+/// 源像素上限：基线 JPEG 16M，其余 1M；单边不超过 8192。这些是文档化的插图范围，
+/// 两条解码入口（book_image_decode 与 img_plane_build 的调用方）共用同一组数字。
+/// Source pixel ceilings: 16M for baseline JPEG, 1M otherwise, 8192 per side. These are the
+/// documented illustration limits, shared by both decode entries.
+#define BOOK_IMAGE_MAX_SIDE 8192u
+#define BOOK_IMAGE_MAX_PIXELS_JPEG (16u * 1024u * 1024u)
+#define BOOK_IMAGE_MAX_PIXELS_OTHER (1024u * 1024u)
+
 /// 只读文件头拿源尺寸，不分配内存，可在排版期调用。
 /// Source dimensions from the header only; allocates nothing, safe during layout.
 bool book_image_size(const uint8_t* data, size_t len, uint16_t* width, uint16_t* height);

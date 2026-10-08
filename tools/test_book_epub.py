@@ -35,15 +35,27 @@ def make_book(path, change=None):
             archive.writestr(name, content)
 
 
+def png_flags():
+    """宿主机 libpng 的头与库目录。/ Host libpng include and library directories."""
+    for prefix in ('/opt/homebrew', '/usr/local', '/usr'):
+        if (Path(prefix) / 'include' / 'png.h').exists():
+            return [f'-I{prefix}/include', f'-L{prefix}/lib']
+    return []
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='book-epub-') as temp:
         work = Path(temp)
         exe = work / 'test'
         subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-g', '-fsanitize=address,undefined', '-DBOOK_HEAP_TRACK',
                         '-I' + str(ROOT / 'tools/book_epub_stubs'), '-I' + str(ROOT / 'tools/zip_host_stubs'),
+                        '-I' + str(ROOT / 'tools/book_layout_stubs'), '-I' + str(ROOT / 'tools/book_image_stubs'),
                         '-I' + str(ROOT / 'main/book'), str(ROOT / 'tools/book_epub_host_test.c'),
                         str(ROOT / 'main/book/book_epub.c'), str(ROOT / 'main/book/zip_reader.c'),
-                        str(ROOT / 'main/book/html_text.c'), str(ROOT / 'main/book/book_image.c'), str(ROOT / 'main/book/vendor/tjpgd.c'), str(ROOT / 'tools/book_heap_track.c'), '-lz', '-o', str(exe)], check=True)
+                        str(ROOT / 'main/book/html_text.c'), str(ROOT / 'main/book/book_image.c'),
+                        *[str(ROOT / 'main/book' / n) for n in ('img_plane.c', 'img_scale.c', 'img_dither.c', 'img_decode.c', 'img_png.c', 'vendor/tjpgd.c')],
+                        str(ROOT / 'tools/book_heap_track.c'), str(ROOT / 'tools/test_display_stub.c'),
+                        *png_flags(), '-lpng', '-lz', '-o', str(exe)], check=True)
         cases = []
 
         def case(name, edit=None):

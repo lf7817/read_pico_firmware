@@ -87,6 +87,15 @@ def filtered_png(color, filter_type):
     data=b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',16,8,8,color,0,0,0))+extra+chunk(b'IDAT',packed[:mid])+chunk(b'IDAT',packed[mid:])+chunk(b'IEND',b'')
     return data,bytes(expected)
 
+def png_flags():
+    """宿主机 libpng 的头与库目录；找不到就交给 -lpng 的默认搜索路径。
+    Host libpng include and library directories; when absent, fall back to the default search path."""
+    for prefix in ("/opt/homebrew", "/usr/local", "/usr"):
+        if (Path(prefix) / "include" / "png.h").exists():
+            return [f"-I{prefix}/include", f"-L{prefix}/lib"]
+    return []
+
+
 def main():
     work = ROOT / 'build/book-image-tests'
     work.mkdir(parents=True, exist_ok=True)
@@ -107,8 +116,10 @@ def main():
         z.writestr('OPS/images/broken.png', b'broken')
         z.writestr('OPS/images/huge.png', png(1025, 1024))
     exe = work / 'test'
-    sources = ['tools/book_image_host_test.c', 'main/book/book_image.c', 'main/book/vendor/tjpgd.c', 'main/book/book_epub.c', 'main/book/html_text.c', 'main/book/zip_reader.c']
-    subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-g', '-fsanitize=address,undefined', '-Itools/book_image_stubs', '-Itools/book_epub_stubs', '-Itools/zip_host_stubs', '-Imain/book', *sources, '-lz', '-o', str(exe)], cwd=ROOT, check=True)
+    sources = ['tools/book_image_host_test.c', 'main/book/book_image.c', 'main/book/vendor/tjpgd.c', 'main/book/book_epub.c', 'main/book/html_text.c', 'main/book/zip_reader.c',
+               'main/book/img_plane.c', 'main/book/img_scale.c', 'main/book/img_dither.c', 'main/book/img_decode.c', 'main/book/img_png.c']
+    subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-g', '-fsanitize=address,undefined', '-Itools/book_image_stubs', '-Itools/book_epub_stubs', '-Itools/zip_host_stubs', '-Itools/book_layout_stubs', '-Imain/book',
+                        *png_flags(), *sources, '-lpng', '-lz', '-o', str(exe)], cwd=ROOT, check=True)
     subprocess.run([str(exe), str(work / 'alpha.png'), str(work / 'gray.jpg'), str(book), *[str(work / (n + '.jpg')) for n in ['cover','tall','edge']], str(work / 'interlaced.png')], check=True, env={**os.environ, 'UBSAN_OPTIONS':'halt_on_error=1'})
     for color in [0,2,3,4,6]:
         for filter_type in range(5):

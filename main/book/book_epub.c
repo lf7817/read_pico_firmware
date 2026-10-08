@@ -614,9 +614,10 @@ esp_err_t book_epub_load(book_epub_t *book, size_t i, html_text_t *out) {
     return ESP_OK;
 }
 esp_err_t book_epub_load_image(book_epub_t *book, size_t i, const char *reference,
-                              uint8_t **pixels, uint16_t *width, uint16_t *height) {
-    if (!pixels || !width || !height) return ESP_ERR_INVALID_ARG;
-    *pixels = NULL; *width = *height = 0;
+                               img_plane_t *out, int max_width, int max_height) {
+    if (!out) return ESP_ERR_INVALID_ARG;
+    img_plane_free(out);
+    if (max_width <= 0 || max_height <= 0) return ESP_ERR_INVALID_ARG;
     if (!book || i >= book->count || !reference || !*reference) return ESP_ERR_INVALID_ARG;
     const char *base = zip_entry_name(book->zip, book->chapters[i].zip_index);
     char path[EPUB_PATH_CAP];
@@ -624,9 +625,47 @@ esp_err_t book_epub_load_image(book_epub_t *book, size_t i, const char *referenc
     char *data; size_t size;
     esp_err_t err = load_entry(book, zip_find(book->zip, path), &data, &size);
     if (err != ESP_OK) return err;
-    bool decoded = book_image_decode((const uint8_t*)data, size, 2u * 1024u * 1024u, pixels, width, height);
+    uint16_t source_w = 0, source_h = 0;
+    bool interlaced = false;
+    if (!book_image_size_ex((const uint8_t *)data, size, &source_w, &source_h, &interlaced) || interlaced) {
+        // 头读不出、或隔行 PNG：条带接口表达不了逐 pass 变化的行宽，交给调用方说明。
+        // An unreadable header or an interlaced PNG: the strip contract cannot express per-pass row
+        // widths, so hand it back for the caller to explain.
+        free(data);
+        return interlaced ? ESP_ERR_NOT_SUPPORTED : ESP_ERR_INVALID_SIZE;
+    }
+    img_format_t format = (size > 3 && !memcmp(data, "\x89PNG", 4)) ? IMG_FORMAT_PNG : IMG_FORMAT_JPEG;
+    // 文档化的插图范围照旧：PNG 与渐进 JPEG 1M 像素、基线 JPEG 16M、单边 8192。条带路径本身
+    // 不需要这些（它按行流过去），但产品范围不能因为换了实现就悄悄放宽。
+    // The documented illustration scope stays put: 1M pixels for PNG and progressive JPEG, 16M for
+    // baseline JPEG, 8192 per side. The strip path would not need this on its own, but swapping the
+    // implementation must not silently widen what the product claims to support.
+    uint64_t pixels = (uint64_t)source_w * source_h;
+    uint32_t ceiling = format == IMG_FORMAT_PNG ? BOOK_IMAGE_MAX_PIXELS_OTHER : BOOK_IMAGE_MAX_PIXELS_JPEG;
+    if (pixels > ceiling || source_w > BOOK_IMAGE_MAX_SIDE || source_h > BOOK_IMAGE_MAX_SIDE) {
+        free(data);
+        return ESP_ERR_INVALID_SIZE;
+    }
+    img_reader_t reader;
+    if (!img_reader_from_memory(&reader, (const uint8_t *)data, size)) {
+        free(data);
+        return ESP_ERR_INVALID_SIZE;
+    }
+    bool built = img_plane_build(&reader, format, source_w, source_h, max_width, max_height, out);
+    if (!built) {
+        // 条带解不了的一律退回整图解码（今天就是这样处理渐进 JPEG 的），再走同一套缩放与抖动。
+        // Anything the strip path cannot decode falls back to the whole-image decoder, which is how
+        // progressive JPEG works today, and then through the same scale and dither.
+        uint8_t* gray = NULL;
+        uint16_t gray_w = 0, gray_h = 0;
+        if (book_image_decode((const uint8_t*)data, size, (size_t)max_width * max_height * 4u,
+                              &gray, &gray_w, &gray_h)) {
+            built = img_plane_from_gray(gray, gray_w, gray_h, max_width, max_height, out);
+            free(gray);
+        }
+    }
     free(data);
-    return decoded ? ESP_OK : ESP_ERR_NOT_SUPPORTED;
+    return built ? ESP_OK : ESP_ERR_INVALID_SIZE;
 }
 uint32_t book_epub_total_bytes(const book_epub_t *book) { return book ? book->total : 0; }
 uint32_t book_epub_chapter_byte_offset(const book_epub_t *book, size_t i) { return book && i < book->count ? book->chapters[i].offset : 0; }

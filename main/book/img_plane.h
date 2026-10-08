@@ -48,6 +48,12 @@ size_t img_plane_bytes(int width, int height);
 bool img_plane_build(img_reader_t* r, img_format_t format, int src_w, int src_h, int max_w,
                      int max_h, img_plane_t* out);
 
+/// 已经有一整块 8-bit 灰度平面时，走同一套缩放与抖动打包。兜底路径用（渐进 JPEG）。
+/// Pack an 8-bit gray plane that already exists through the same scale and dither; the fallback
+/// path uses it for progressive JPEG.
+bool img_plane_from_gray(const uint8_t* gray, int width, int height, int max_w, int max_h,
+                         img_plane_t* out);
+
 /// 释放并清空。/ Free and clear.
 void img_plane_free(img_plane_t* p);
 

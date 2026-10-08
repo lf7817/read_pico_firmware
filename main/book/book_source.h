@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include "esp_err.h"
 #include "html_text.h"
+#include "img_plane.h"
 typedef enum {
     BOOK_KIND_TXT, ///< 文本 / Plain text
     BOOK_KIND_EPUB, ///< EPUB 容器 / EPUB container
@@ -28,9 +29,11 @@ esp_err_t book_chapter_load(size_t i, char **utf8, size_t *len);
 /// 保留 EPUB 标题/段落及图片块；TXT 的 blocks 为 NULL，调用方 html_text_free。
 /// Preserve EPUB heading/paragraph and image blocks; TXT has NULL blocks; caller uses html_text_free.
 esp_err_t book_chapter_load_blocks(size_t i, html_text_t *out);
-/// 按需解码指定章节的单幅本地图片；失败清空输出，成功像素由调用方 free，TXT 不支持。
-/// Decode one local chapter image on demand; clear outputs on failure, caller frees successful pixels; unsupported for TXT.
-esp_err_t book_chapter_load_image(size_t i, const char *reference, uint8_t **pixels, uint16_t *width, uint16_t *height);
+/// 按需把指定章节的单幅本地图片解成不超过 max 的 4bpp 平面；失败平面为空，TXT 不支持。
+/// Decode one local chapter image on demand into a 4bpp plane no larger than max; a failure leaves
+/// an empty plane. Unsupported for TXT.
+esp_err_t book_chapter_load_image(size_t i, const char *reference, img_plane_t *out, int max_width,
+                                  int max_height);
 /// TXT 为源文件字节；EPUB 为 spine 原始 HTML 未压缩累计字节，不是 ZIP 文件大小。
 /// TXT uses source-file bytes; EPUB uses cumulative uncompressed spine HTML bytes, not ZIP file size.
 uint32_t book_total_bytes(void);

@@ -12,6 +12,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
+#include "img_plane.h"
 #include "html_text.h"
 
 typedef struct book_epub book_epub_t;
@@ -25,10 +26,11 @@ size_t book_epub_chapter_count(const book_epub_t *book);
 esp_err_t book_epub_chapter_title(const book_epub_t *book, size_t index, char *buf, size_t cap);
 /// 加载 UTF-8、标题/段落及图片引用，不解码图片；调用方 html_text_free。/ Load UTF-8, styled blocks and image references without decoding images; caller uses html_text_free.
 esp_err_t book_epub_load(book_epub_t *book, size_t index, html_text_t *out);
-/// 明确请求后解码本章单幅本地图片；失败输出清空，成功像素由调用方 free，不修改正文或分页。
-/// Decode one local image on explicit request; clear outputs on failure, caller frees successful pixels; text and pagination stay unchanged.
+/// 明确请求后把本章单幅本地图片解成不超过 max 的 4bpp 平面；失败平面为空，不修改正文或分页。
+/// Decode one local image on explicit request into a 4bpp plane no larger than max; a failure
+/// leaves an empty plane, and text and pagination stay unchanged.
 esp_err_t book_epub_load_image(book_epub_t *book, size_t index, const char *reference,
-                              uint8_t **pixels, uint16_t *width, uint16_t *height);
+                               img_plane_t *out, int max_width, int max_height);
 /// spine 原始 HTML 未压缩字节总量，不等于 EPUB 文件大小。/ Total uncompressed source HTML bytes in the spine, not EPUB file size.
 uint32_t book_epub_total_bytes(const book_epub_t *book);
 /// 该章之前所有 spine 原始 HTML 字节累计值。/ Sum of source HTML bytes preceding this chapter in the spine.

@@ -46,7 +46,6 @@
 #include "book_progress.h"
 #include "book_source.h"
 #include "book_store.h"
-#include "img_dither.h"
 #include "display.h"
 #include "e0470_epaper_waveform.h"
 #include "esp_heap_caps.h"
@@ -128,8 +127,7 @@ static blk_t* s_blocks;
 static size_t s_block_count;
 static size_t s_text_len, s_chapter, s_page;
 static bool s_image_open;
-static uint8_t* s_image_pixels;
-static uint16_t s_image_width, s_image_height;
+static img_plane_t s_image_plane;   // 预览用的 4bpp 平面 / the plane shown by the preview
 static size_t s_image_block = SIZE_MAX;
 static const char* s_image_error;
 static char s_image_origin[224];
@@ -519,8 +517,7 @@ static void save_progress(void) {
 }
 static void invalidate_prep(void) { s_next_page = s_prep_page = -1; }
 static void free_image(void) {
-    free(s_image_pixels); s_image_pixels = NULL;
-    s_image_width = s_image_height = 0;
+    img_plane_free(&s_image_plane);
     s_image_block = SIZE_MAX; s_image_open = false;
     s_image_error = NULL; s_image_origin[0] = 0;
 }
@@ -706,6 +703,13 @@ static bool kick_prep(void) {
     xTaskNotifyGive(s_prep_task);
     return true;
 }
+// 预览可用区域：标题行下面、底栏上面。加载尺寸与绘制位置都从它算，两处不会漂。
+// The preview box: below the header line, above the bottom bar. Both the load size and the paint
+// position come from it, so the two cannot drift apart.
+static EpdRect image_preview_box(void) {
+    int top = UI_CONTENT_TOP + (s_image_origin[0] ? UI_PX_CAPTION + UI_GAP : 0);
+    return (EpdRect){UI_MARGIN, top, ui_content_width(), UI_CONTENT_BOTTOM - top};
+}
 static void draw_image(uint8_t* fb) {
     ui_clear_page(fb);
     bool title_image = s_image_block < s_block_count && s_blocks[s_image_block].image_title;
@@ -715,26 +719,14 @@ static void draw_image(uint8_t* fb) {
         char line[sizeof(s_image_origin)]; copy_text(line, sizeof(line), s_image_origin);
         fit_text(line, UI_PX_CAPTION, ui_content_width());
         ui_text(fb, UI_MARGIN, top, UI_PX_CAPTION, line, EPD_DRAW_ALIGN_LEFT, false);
-        top += UI_PX_CAPTION + UI_GAP;
     }
-    EpdRect area = {UI_MARGIN, top, ui_content_width(), UI_CONTENT_BOTTOM - top};
-    if (s_image_pixels && s_image_width && s_image_height) {
-        int width = s_image_width, height = s_image_height;
-        if (width > area.width) { height = height * area.width / width; width = area.width; }
-        if (height > area.height) { width = width * area.height / height; height = area.height; }
-        if (width < 1) width = 1;
-        if (height < 1) height = 1;
-        int left = area.x + (area.width - width) / 2, y0 = area.y + (area.height - height) / 2;
-        for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
-            size_t src = (size_t)((int64_t)y * s_image_height / height) * s_image_width +
-                         (size_t)((int64_t)x * s_image_width / width);
-            int px = left + x, py = y0 + y;
-            // 抖动阈值按屏幕坐标取，差分重画局部时同一像素结果不变。
-            // The threshold is keyed on screen coordinates, so a partial repaint yields the same pixel.
-            // epd_draw_pixel 取的是 color 的高 nibble，所以档位要左移四位。
-            // epd_draw_pixel reads the high nibble of color, hence the shift.
-            epd_draw_pixel(px, py, (uint8_t)(img_dither_gray_to_4bpp(s_image_pixels[src], px, py) << 4), fb);
-        }
+    EpdRect area = image_preview_box();
+    if (s_image_plane.nib) {
+        // 平面在加载时就已经缩到盒子里并抖好，这里只居中搬运。
+        // The plane was fitted to the box and dithered while loading; this only centers it.
+        int left = area.x + (area.width - s_image_plane.width) / 2;
+        int y0 = area.y + (area.height - s_image_plane.height) / 2;
+        img_plane_blit(&s_image_plane, fb, left, y0);
     } else ui_text(fb, area.x, area.y + area.height / 2, UI_PX_CAPTION,
                    s_image_error ? s_image_error : "图片不可用", EPD_DRAW_ALIGN_LEFT, false);
     ui_draw_button(fb, ui_bar_rect(0, 1), "返回正文", false);
@@ -886,13 +878,15 @@ static void loading(app_ctx_t* ctx, const char* text) { loading_detail(ctx, text
 static app_redraw_t open_image(app_ctx_t* ctx, size_t block_index) {
     if (block_index >= s_block_count || !s_blocks[block_index].image_src) return APP_REDRAW_NONE;
     blk_t* block = &s_blocks[block_index];
-    if (s_image_block != block_index || !s_image_pixels) {
+    if (s_image_block != block_index || !s_image_plane.nib) {
         free_image();
         invalidate_prep();
         loading_detail(ctx, "正在加载图片…", "加载后可返回原阅读位置");
         lock_draw();
         free(s_next_fb); s_next_fb = NULL;
-        esp_err_t err = book_chapter_load_image(s_chapter, block->image_src, &s_image_pixels, &s_image_width, &s_image_height);
+        EpdRect box = image_preview_box();
+        esp_err_t err = book_chapter_load_image(s_chapter, block->image_src, &s_image_plane, box.width,
+                                               box.height);
         unlock_draw();
         ensure_prep();
         s_image_block = block_index;

@@ -128,6 +128,30 @@ bool img_plane_build(img_reader_t* r, img_format_t format, int src_w, int src_h,
     return ok;
 }
 
+bool img_plane_from_gray(const uint8_t* gray, int width, int height, int max_w, int max_h,
+                         img_plane_t* out) {
+    if (out) { out->nib = NULL; out->width = out->height = 0; }
+    if (!gray || !out || width <= 0 || height <= 0 || max_w <= 0 || max_h <= 0) return false;
+    int tw = 0, th = 0;
+    img_plane_target(width, height, max_w, max_h, &tw, &th);
+    size_t store_size = img_box_scaler_memory(tw);
+    uint8_t* store = heap_caps_malloc(store_size, PSRAM_CAPS);
+    img_box_scaler_t scaler;
+    out->nib = heap_caps_malloc(img_plane_bytes(tw, th), PSRAM_CAPS);
+    out->width = (uint16_t)tw;
+    out->height = (uint16_t)th;
+    uint8_t* rows = heap_caps_malloc((size_t)tw * th, PSRAM_CAPS);
+    bool ok = store && rows && out->nib &&
+              img_box_scaler_init(&scaler, store, store_size, width, height, tw, th) &&
+              img_box_push(&scaler, gray, height, rows, (size_t)tw * th) == th;
+    for (int y = 0; ok && y < th; ++y) for (int x = 0; x < tw; ++x)
+        img_plane_set(out, x, y, img_dither_gray_to_4bpp(rows[(size_t)y * tw + x], x, y));
+    free(rows);
+    free(store);
+    if (!ok) img_plane_free(out);
+    return ok;
+}
+
 void img_plane_blit(const img_plane_t* p, uint8_t* fb, int x0, int y0) {
     if (!p || !p->nib || !fb) return;
     for (int y = 0; y < p->height; ++y) for (int x = 0; x < p->width; ++x)

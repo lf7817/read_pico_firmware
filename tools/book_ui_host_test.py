@@ -119,13 +119,17 @@ typedef struct {char* image_src;bool image_repeated;uint16_t image_first_chapter
 static blk_t* s_blocks;
 static size_t s_block_count;
 static bool s_image_open;
-static uint8_t* s_image_pixels;
-static uint16_t s_image_width,s_image_height;
+typedef struct {uint8_t* nib;uint16_t width,height;} img_plane_t;
+static void img_plane_free(img_plane_t* p){free(p->nib);p->nib=NULL;p->width=p->height=0;}
+static img_plane_t s_image_plane;
 static size_t s_image_block=SIZE_MAX;
 static const char* s_image_error;
 static char s_image_origin[224];
 static int test_image_loads,test_image_error;
-static int book_chapter_load_image(size_t chapter,const char* ref,uint8_t** pixels,uint16_t* width,uint16_t* height){(void)chapter;assert(ref);++test_image_loads;*pixels=NULL;*width=*height=0;if(test_image_error)return test_image_error;*pixels=malloc(4);assert(*pixels);*width=*height=2;return ESP_OK;}
+static int book_chapter_load_image(size_t chapter,const char* ref,img_plane_t* out,int max_w,int max_h){
+    (void)chapter;assert(ref&&max_w>0&&max_h>0);++test_image_loads;img_plane_free(out);
+    if(test_image_error)return test_image_error;
+    out->nib=malloc(4);assert(out->nib);out->width=out->height=2;return ESP_OK;}
 static int book_chapter_title(size_t chapter,char* out,size_t cap){snprintf(out,cap,"Fixture chapter %zu",chapter);return ESP_OK;}
 static void lock_draw(void){}
 static void unlock_draw(void){}
@@ -165,6 +169,7 @@ static app_redraw_t turn_page(app_ctx_t* ctx,int dir){(void)ctx;(void)dir;++test
 typedef enum {UI_GESTURE_PRESS,UI_GESTURE_TAP,UI_GESTURE_LONG_PRESS,UI_GESTURE_SWIPE_L,UI_GESTURE_SWIPE_R,UI_GESTURE_SWIPE_U,UI_GESTURE_SWIPE_D,UI_GESTURE_CANCEL} ui_gesture_type_t;
 typedef struct {ui_gesture_type_t type;uint16_t x0,y0,x,y;} ui_gesture_event_t;
 static EpdRect body_rect(void){return(EpdRect){40,24,604,1000};}
+static EpdRect image_preview_box(void){return(EpdRect){40,120,604,900};}
 static int control_at(app_ctx_t* ctx,uint16_t x,uint16_t y,EpdRect* rect){(void)ctx;*rect=(EpdRect){48,100,588,88};return ui_rect_hit(*rect,x,y)?1000:-1;}
 static app_redraw_t open_image(app_ctx_t* ctx,size_t block);
 static app_redraw_t action_at(app_ctx_t* ctx,uint16_t x,uint16_t y){(void)x;(void)y;return open_image(ctx,0);}
@@ -198,7 +203,7 @@ int main(void) {
     gesture_event(&image_ctx,&image_event);assert(test_turns==1 && test_image_loads==0 && !s_image_open);
     image_event.type=UI_GESTURE_TAP;image_event.x=300;
     assert(gesture_event(&image_ctx,&image_event)==APP_REDRAW_FULL && test_image_loads==1 && s_image_open);
-    assert(s_image_pixels && strstr(s_image_origin,"第 3 节") && s_page==6 && s_chapter==9);
+    assert(s_image_plane.nib && strstr(s_image_origin,"第 3 节") && s_page==6 && s_chapter==9);
     image_event.type=UI_GESTURE_SWIPE_L;image_event.x=236;
     assert(gesture_event(&image_ctx,&image_event)==APP_REDRAW_NONE && test_turns==1 && s_image_open);
     assert(on_key(&image_ctx,UI_KEY_3)==APP_REDRAW_FULL && !s_image_open && test_turns==1 && s_page==6);
@@ -206,10 +211,10 @@ int main(void) {
     image_event.type=UI_GESTURE_TAP;image_event.x=300;
     assert(gesture_event(&image_ctx,&image_event)==APP_REDRAW_FULL && !s_image_open && s_page==6);
     test_image_error=ESP_ERR_NOT_FOUND;
-    assert(open_image(&image_ctx,1)==APP_REDRAW_FULL && s_image_open && !s_image_pixels && s_image_error && test_image_loads==2);
+    assert(open_image(&image_ctx,1)==APP_REDRAW_FULL && s_image_open && !s_image_plane.nib && s_image_error && test_image_loads==2);
     assert(on_key(&image_ctx,UI_KEY_1)==APP_REDRAW_FULL && !s_image_open && test_turns==1);
-    test_image_error=0;assert(open_image(&image_ctx,1)==APP_REDRAW_FULL && s_image_pixels && test_image_loads==3);
-    free_image();assert(!s_image_open && !s_image_pixels && s_image_block==SIZE_MAX);
+    test_image_error=0;assert(open_image(&image_ctx,1)==APP_REDRAW_FULL && s_image_plane.nib && test_image_loads==3);
+    free_image();assert(!s_image_open && !s_image_plane.nib && s_image_block==SIZE_MAX);
     image_blocks[0].image_title=true;
     assert(open_image(&image_ctx,0)==APP_REDRAW_FULL && !s_image_origin[0]);
     free_image();
