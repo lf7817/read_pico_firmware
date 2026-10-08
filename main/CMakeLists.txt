@@ -50,6 +50,7 @@ idf_component_register(
         "book/img_decode.c"
         "book/img_png.c"
         "book/img_plane.c"
+        "book/img_plane_build.c"
         "book/thumb_cache.c"
         "book/book_cover.c"
         "book/vendor/tjpgd.c"

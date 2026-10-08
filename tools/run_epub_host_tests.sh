@@ -19,7 +19,11 @@ python tools/test_book_epub.py
 flags=(-std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -g -fsanitize=address,undefined -fno-omit-frame-pointer)
 includes=(-Itools/book_epub_stubs -Itools/zip_host_stubs -Imain/book)
 source tools/host_image_deps.sh
-cc "${flags[@]}" -Itools/html_text_stubs -Imain/book tools/html_text_host_test.c main/book/html_text.c -o build/book-tests/epub-html
+# html_text 释放块里的平面，所以链平面存储模块。
+# html_text frees the planes inside blocks, so it links the plane storage module.
+cc "${flags[@]}" -Itools/html_text_stubs -Imain/book tools/html_text_host_test.c main/book/html_text.c \
+   main/book/img_plane.c -Itools/book_layout_stubs -Itools/book_image_stubs \
+   tools/test_display_stub.c -o build/book-tests/epub-html
 build/book-tests/epub-html
 
 # 同时链接 TXT 与 EPUB，防止分派变更破坏旧书源。

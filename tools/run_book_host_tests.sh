@@ -17,7 +17,11 @@ case "$(uname)" in
 esac
 gcc "${flags[@]}" -Itools/book_epub_stubs -Itools/zip_host_stubs -Itools/book_layout_stubs -Itools/book_image_stubs \
   "${png_flags[@]}" tools/book_source_host_test.c main/book/book_source.c main/book/book_txt.c main/book/gbk.c main/book/book_epub.c main/book/zip_reader.c main/book/html_text.c main/book/book_image.c "${image_pipeline[@]}" tools/test_display_stub.c -lpng -lz -o build/book-tests/source
-gcc "${flags[@]}" -Itools/book_layout_stubs -Itools/book_source_host_stubs tools/book_layout_host_test.c main/book/book_layout.c -o build/book-tests/layout
+# book_layout 会搬平面，所以链平面存储与缩放抖动；解码器不在其中（img_plane_build 才牵扯 libpng）。
+# book_layout blits planes, so it links plane storage plus scale and dither; the decoders are
+# not in that set - only img_plane_build pulls in libpng.
+gcc "${flags[@]}" -Itools/book_layout_stubs -Itools/book_source_host_stubs -Itools/book_image_stubs \
+  tools/book_layout_host_test.c main/book/book_layout.c main/book/img_plane.c main/book/img_scale.c main/book/img_dither.c -o build/book-tests/layout
 gcc "${flags[@]}" -Itools/book_storage_stubs tools/book_storage_host_test.c main/book/book_progress.c -o build/book-tests/progress
 gcc "${flags[@]}" -Itools/book_storage_stubs -Icomponents/read_pico/include tools/book_store_host_test.c -o build/book-tests/store
 gcc "${flags[@]}" tools/book_policy_host_test.c -o build/book-tests/policy
@@ -30,7 +34,9 @@ gcc "${flags[@]}" -Itools/ui_gesture_stubs -Imain/ui tools/ui_gesture_host_test.
 gcc "${flags[@]}" -ffunction-sections -fdata-sections "${gc_sections[@]}" -Itools/ui_gesture_stubs -Imain/ui tools/ui_kit_host_test.c main/ui/ui_kit.c -o build/book-tests/ui_kit
 build/book-tests/gesture
 build/book-tests/ui_kit
-gcc "${flags[@]}" -Itools/html_text_stubs tools/html_text_host_test.c main/book/html_text.c -o build/book-tests/html
+gcc "${flags[@]}" -Itools/html_text_stubs -Itools/book_layout_stubs -Itools/book_image_stubs \
+  tools/html_text_host_test.c main/book/html_text.c main/book/img_plane.c tools/test_display_stub.c \
+  -o build/book-tests/html
 build/book-tests/html
 gcc "${flags[@]}" tools/img_dither_host_test.c main/book/img_dither.c -o build/book-tests/img_dither
 build/book-tests/img_dither
@@ -50,7 +56,8 @@ build/book-tests/img_png
 # img_plane measures its peak through the tracking shim, so it takes book_epub_stubs'
 # esp_heap_caps.h, which shadows malloc/free by macro.
 gcc "${flags[@]}" -DBOOK_HEAP_TRACK -Itools/book_epub_stubs -Itools/book_image_stubs \
-  -Itools/book_layout_stubs "${png_flags[@]}" tools/img_plane_host_test.c main/book/img_plane.c main/book/img_scale.c \
+  -Itools/book_layout_stubs "${png_flags[@]}" tools/img_plane_host_test.c main/book/img_plane.c main/book/img_plane_build.c \
+  main/book/img_scale.c \
   main/book/img_dither.c main/book/img_decode.c main/book/img_png.c main/book/vendor/tjpgd.c \
   tools/book_heap_track.c -lpng -lz -o build/book-tests/img_plane
 build/book-tests/img_plane

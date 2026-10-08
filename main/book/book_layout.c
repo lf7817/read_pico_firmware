@@ -50,14 +50,17 @@ static const blk_t* block_at(size_t off) {
 // 插图等比适配正文区域，不放大；整块换页，不切断图片。
 // Fit illustrations proportionally without upscaling; move whole images across page boundaries.
 static void image_size(const blk_t* block, int* width, int* height) {
-    *width = block->image_width; *height = block->image_height;
+    // 平面在加载时就已经按正文盒缩放好，这里只兜住"分页盒后来变小了"的情况。
+    // The plane was already fitted to the body box while loading; this only covers the case
+    // where the pagination box has since become smaller.
+    *width = block->plane.width; *height = block->plane.height;
     if (*width > s_rect.width) { *height = (int)((int64_t)*height * s_rect.width / *width); *width = s_rect.width; }
     if (*height > s_rect.height) { *width = (int)((int64_t)*width * s_rect.height / *height); *height = s_rect.height; }
     if (*width < 1) *width = 1;
     if (*height < 1) *height = 1;
 }
 static int row_height(const blk_t* block, int px) {
-    if (block && block->image) { int width, height; image_size(block, &width, &height); return height; }
+    if (block && block->plane.nib) { int width, height; image_size(block, &width, &height); return height; }
     if (block && block->image_src) return 2 * s_px < s_rect.height ? 2 * s_px : s_rect.height;
     return px + px / 2;
 }
@@ -141,7 +144,7 @@ static bool take_line(size_t off, size_t* next, bool* paragraph_end, int* px, bo
     int64_t width = 0;
     s_line[0] = 0;
     *paragraph_end = false;
-    if (block && (block->image || block->image_src)) {
+    if (block && (block->plane.nib || block->image_src)) {
         *heading = false;
         *next = limit + (limit < s_len && s_text[limit] == '\n');
         return *next > off;
@@ -199,7 +202,7 @@ bool book_layout_begin_blocks(const char* utf8, size_t len, const blk_t* blocks,
         size_t expected = 0;
         for (size_t i = 0; i < count; ++i) {
             const blk_t* b = &blocks[i];
-            if (b->image && (!b->image_width || !b->image_height)) return false;
+            if (b->plane.nib && (!b->plane.width || !b->plane.height)) return false;
             if (b->offset != expected || b->offset >= len || !b->len || b->len > len - b->offset ||
                 ((unsigned char)utf8[b->offset] & 0xc0) == 0x80) return false;
             size_t end = b->offset + b->len;
@@ -283,15 +286,14 @@ void book_layout_draw_page(uint8_t* fb, size_t page, EpdRect rect, int px) {
         const blk_t* block = block_at(off);
         int line_height = row_height(block, line_px);
         int image_width = 0;
-        if (block && block->image) image_size(block, &image_width, &line_height);
+        if (block && block->plane.nib) image_size(block, &image_width, &line_height);
         if (used + line_height > rect.height) return;
         if (image_width) {
+            // 平面已经抖好并打包，绘制期只做一次搬运；抖动坐标属于平面，不随页位置漂移。
+            // The plane is dithered and packed, so painting copies it once; the dither belongs to
+            // the plane and does not drift with the page position.
             int left = rect.x + (rect.width - image_width) / 2;
-            for (int y = 0; y < line_height; ++y) for (int x = 0; x < image_width; ++x) {
-                size_t src = (size_t)((int64_t)y * block->image_height / line_height) * block->image_width +
-                             (size_t)((int64_t)x * block->image_width / image_width);
-                epd_draw_pixel(left + x, rect.y + (int)used + y, block->image[src], fb);
-            }
+            img_plane_blit(&block->plane, fb, left, rect.y + (int)used, image_width, line_height);
         } else if (block && block->image_src) {
             draw_placeholder(fb, block, placeholder_rect(rect, (int)used, line_height));
         } else if (s_line[0]) {
@@ -315,8 +317,15 @@ size_t book_layout_image_at(size_t page, EpdRect rect, int x, int y, EpdRect* hi
         const blk_t* block = block_at(off);
         int height = row_height(block, px);
         if (used + height > rect.height) return SIZE_MAX;
-        if (block && block->image_src && !block->image) {
-            EpdRect area = placeholder_rect(rect, (int)used, height);
+        if (block && block->image_src) {
+            // 已内联的图命中区域就是它画出来的那块；占位的图命中区域是占位框。
+            // A loaded image is hit where it was actually painted; a placeholder is hit in its box.
+            EpdRect area;
+            if (block->plane.nib) {
+                int width;
+                image_size(block, &width, &height);
+                area = (EpdRect){rect.x + (rect.width - width) / 2, rect.y + (int)used, width, height};
+            } else area = placeholder_rect(rect, (int)used, height);
             if (x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height) {
                 if (hit) *hit = area;
                 return (size_t)(block - s_blocks);

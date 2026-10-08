@@ -63,7 +63,10 @@ uint8_t img_plane_get(const img_plane_t* p, int x, int y);
 /// 写一格（0..15）。越界忽略。/ Write one cell; out of range is ignored.
 void img_plane_set(img_plane_t* p, int x, int y, uint8_t code);
 
-/// 把平面画进 4bpp framebuffer 的 (x0,y0) 起。逐点走 epd_draw_pixel，因为它取的是 color 的高 nibble。
-/// Paint the plane into a 4bpp framebuffer at (x0,y0), pixel by pixel through epd_draw_pixel,
-/// which reads the level from the high nibble of color.
-void img_plane_blit(const img_plane_t* p, uint8_t* fb, int x0, int y0);
+/// 把平面左上角 width×height 格画进 4bpp framebuffer 的 (x0,y0)。逐点走 epd_draw_pixel，
+/// 因为它取的是 color 的高 nibble。width/height 允许小于平面（分页盒变小时要按新盒子裁剪），
+/// 大于平面则只画到平面边界。
+/// Paint the plane's top-left width by height cells into a 4bpp framebuffer at (x0,y0), pixel by
+/// pixel through epd_draw_pixel, which reads the level from the high nibble of color. width/height
+/// may be smaller than the plane (clip to a box that shrank since loading) and never overshoot it.
+void img_plane_blit(const img_plane_t* p, uint8_t* fb, int x0, int y0, int width, int height);

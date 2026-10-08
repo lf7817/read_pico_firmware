@@ -53,7 +53,8 @@ def main():
                         '-I' + str(ROOT / 'main/book'), str(ROOT / 'tools/book_epub_host_test.c'),
                         str(ROOT / 'main/book/book_epub.c'), str(ROOT / 'main/book/zip_reader.c'),
                         str(ROOT / 'main/book/html_text.c'), str(ROOT / 'main/book/book_image.c'),
-                        *[str(ROOT / 'main/book' / n) for n in ('img_plane.c', 'img_scale.c', 'img_dither.c', 'img_decode.c', 'img_png.c', 'vendor/tjpgd.c')],
+                        *[str(ROOT / 'main/book' / n) for n in ('img_plane.c', 'img_plane_build.c', 'img_scale.c', 'img_dither.c',
+                                       'img_decode.c', 'img_png.c', 'vendor/tjpgd.c')],
                         str(ROOT / 'tools/book_heap_track.c'), str(ROOT / 'tools/test_display_stub.c'),
                         *png_flags(), '-lpng', '-lz', '-o', str(exe)], check=True)
         cases = []

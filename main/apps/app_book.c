@@ -123,11 +123,17 @@ static char s_resume_path[BOOK_STORE_PATH_MAX], s_resume_name[256];
 static char s_message[128], s_storage[128], s_path[BOOK_STORE_PATH_MAX], s_title[128];
 static char s_font_path[192];
 static char* s_text;
+// 每章预加载插图的平面总量上限；超出的图保持占位高度与点按预览。
+// Per-chapter ceiling for preloaded illustration planes; images past it keep the
+// placeholder height and the tap-to-preview path.
+#define BOOK_INLINE_IMAGE_BYTES (1024U * 1024U)
 static blk_t* s_blocks;
 static size_t s_block_count;
 static size_t s_text_len, s_chapter, s_page;
 static bool s_image_open;
-static img_plane_t s_image_plane;   // 预览用的 4bpp 平面 / the plane shown by the preview
+static img_plane_t s_image_plane;   // 预览自己加载的平面 / a plane the preview loaded itself
+static const img_plane_t* s_image_view;  // 预览实际显示的平面，可能是块里预加载的那张
+                                   // what the preview shows: often the block's preloaded plane
 static size_t s_image_block = SIZE_MAX;
 static const char* s_image_error;
 static char s_image_origin[224];
@@ -518,6 +524,7 @@ static void save_progress(void) {
 static void invalidate_prep(void) { s_next_page = s_prep_page = -1; }
 static void free_image(void) {
     img_plane_free(&s_image_plane);
+    s_image_view = NULL;
     s_image_block = SIZE_MAX; s_image_open = false;
     s_image_error = NULL; s_image_origin[0] = 0;
 }
@@ -721,12 +728,12 @@ static void draw_image(uint8_t* fb) {
         ui_text(fb, UI_MARGIN, top, UI_PX_CAPTION, line, EPD_DRAW_ALIGN_LEFT, false);
     }
     EpdRect area = image_preview_box();
-    if (s_image_plane.nib) {
+    if (s_image_view && s_image_view->nib) {
         // 平面在加载时就已经缩到盒子里并抖好，这里只居中搬运。
         // The plane was fitted to the box and dithered while loading; this only centers it.
-        int left = area.x + (area.width - s_image_plane.width) / 2;
-        int y0 = area.y + (area.height - s_image_plane.height) / 2;
-        img_plane_blit(&s_image_plane, fb, left, y0);
+        int left = area.x + (area.width - s_image_view->width) / 2;
+        int y0 = area.y + (area.height - s_image_view->height) / 2;
+        img_plane_blit(s_image_view, fb, left, y0, s_image_view->width, s_image_view->height);
     } else ui_text(fb, area.x, area.y + area.height / 2, UI_PX_CAPTION,
                    s_image_error ? s_image_error : "图片不可用", EPD_DRAW_ALIGN_LEFT, false);
     ui_draw_button(fb, ui_bar_rect(0, 1), "返回正文", false);
@@ -878,15 +885,23 @@ static void loading(app_ctx_t* ctx, const char* text) { loading_detail(ctx, text
 static app_redraw_t open_image(app_ctx_t* ctx, size_t block_index) {
     if (block_index >= s_block_count || !s_blocks[block_index].image_src) return APP_REDRAW_NONE;
     blk_t* block = &s_blocks[block_index];
-    if (s_image_block != block_index || !s_image_plane.nib) {
+    if (s_image_block != block_index || !s_image_view) {
         free_image();
         invalidate_prep();
         loading_detail(ctx, "正在加载图片…", "加载后可返回原阅读位置");
         lock_draw();
         free(s_next_fb); s_next_fb = NULL;
-        EpdRect box = image_preview_box();
-        esp_err_t err = book_chapter_load_image(s_chapter, block->image_src, &s_image_plane, box.width,
-                                               box.height);
+        // 正文里已经预加载过的图直接借用，不再解第二遍；只有超预算没加载的图才现解。
+        // Reuse a plane the page already loaded instead of decoding it twice; only images past the
+        // budget get decoded here.
+        esp_err_t err = ESP_OK;
+        if (block->plane.nib) s_image_view = &block->plane;
+        else {
+            EpdRect box = image_preview_box();
+            err = book_chapter_load_image(s_chapter, block->image_src, &s_image_plane, box.width,
+                                          box.height);
+            if (err == ESP_OK) s_image_view = &s_image_plane;
+        }
         unlock_draw();
         ensure_prep();
         s_image_block = block_index;
@@ -947,6 +962,15 @@ static bool load_chapter(app_ctx_t* ctx, size_t chapter, size_t offset, bool las
     }
     lock_draw();
     invalidate_prep();
+    // 平面必须在分页之前建好：分页要按真实高度留位，边翻边补会让页码在读者眼下变动。
+    // Planes have to exist before pagination: page breaks reserve their real height, and filling
+    // them in while reading would move page numbers under the reader.
+    int64_t images_started = esp_timer_get_time();
+    EpdRect body = body_rect();
+    size_t image_bytes = book_chapter_prepare_images(chapter, &loaded, body.width, body.height,
+                                                     BOOK_INLINE_IMAGE_BYTES);
+    ESP_LOGI(TAG, "chapter images: %u KiB in %lld ms", (unsigned)(image_bytes / 1024),
+             (esp_timer_get_time() - images_started) / 1000);
     bool ok = book_layout_begin_blocks(loaded.utf8, loaded.len, loaded.blocks, loaded.count, body_rect(), s_px);
     // 先完成续读页；其余页由 tick 分批排版，上一章末页仍须定位到末尾。
     // Finish the resume page first; ticks paginate the rest, while previous-chapter navigation needs its end.

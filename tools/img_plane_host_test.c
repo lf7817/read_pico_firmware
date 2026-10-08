@@ -158,8 +158,14 @@ int main(void) {
     // blit 与平面读取同基准。/ The blit shares the plane's packing basis.
     uint8_t fb[3 * ((10 + 1) / 2)] = {0};
     s_fb = fb; s_fb_w = 10; s_fb_h = 3;
-    img_plane_blit(&p, fb, 0, 0);
+    img_plane_blit(&p, fb, 0, 0, 9, 1);
     for (int x = 0; x < 9; ++x) assert((fb[x / 2] >> ((x & 1) ? 4 : 0) & 0x0F) == (uint8_t)(x + 3));
+    // 裁剪：只给 4 列宽就要停在那 4 列，不能把整条平面涂出去。
+    // Clipping: asking for four columns must paint four columns, not the whole plane.
+    memset(fb, 0, sizeof(fb));
+    img_plane_blit(&p, fb, 0, 0, 4, 1);
+    for (int x = 0; x < 4; ++x) assert((fb[x / 2] >> ((x & 1) ? 4 : 0) & 0x0F) == (uint8_t)(x + 3));
+    assert((fb[2] >> 4) == 0);
 
     check_build("build/img-fixtures/mono400.jpg", IMG_FORMAT_JPEG, 400, 640, 200, 320);
     check_build("build/img-fixtures/chroma400.jpg", IMG_FORMAT_JPEG, 400, 640, 50, 80);

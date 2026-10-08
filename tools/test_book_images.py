@@ -117,7 +117,8 @@ def main():
         z.writestr('OPS/images/huge.png', png(1025, 1024))
     exe = work / 'test'
     sources = ['tools/book_image_host_test.c', 'main/book/book_image.c', 'main/book/vendor/tjpgd.c', 'main/book/book_epub.c', 'main/book/html_text.c', 'main/book/zip_reader.c',
-               'main/book/img_plane.c', 'main/book/img_scale.c', 'main/book/img_dither.c', 'main/book/img_decode.c', 'main/book/img_png.c']
+               'main/book/img_plane.c', 'main/book/img_plane_build.c', 'main/book/img_scale.c',
+               'main/book/img_dither.c', 'main/book/img_decode.c', 'main/book/img_png.c']
     subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-g', '-fsanitize=address,undefined', '-Itools/book_image_stubs', '-Itools/book_epub_stubs', '-Itools/zip_host_stubs', '-Itools/book_layout_stubs', '-Imain/book',
                         *png_flags(), *sources, '-lpng', '-lz', '-o', str(exe)], cwd=ROOT, check=True)
     subprocess.run([str(exe), str(work / 'alpha.png'), str(work / 'gray.jpg'), str(book), *[str(work / (n + '.jpg')) for n in ['cover','tall','edge']], str(work / 'interlaced.png')], check=True, env={**os.environ, 'UBSAN_OPTIONS':'halt_on_error=1'})

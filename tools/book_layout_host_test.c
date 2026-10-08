@@ -165,8 +165,10 @@ int main(void) {
     assert(book_layout_page_for_offset(501) == 62);
     // 图片单块换页，文字不丢失；适配后仍在正文边界内。
     // Images cross pages atomically without losing text and fit inside the body.
-    uint8_t pixels[2000]; memset(pixels, 128, sizeof(pixels));
-    blk_t illustrated[] = {{.offset=0,.len=1}, {.offset=2,.len=3,.image=pixels,.image_width=40,.image_height=50}, {.offset=6,.len=1}};
+    static uint8_t nib[(40 * 50 + 1) / 2];
+    memset(nib, 0x88, sizeof(nib));
+    img_plane_t art = { nib, 40, 50 };
+    blk_t illustrated[] = {{.offset=0,.len=1}, {.offset=2,.len=3,.plane=art}, {.offset=6,.len=1}};
     r = (EpdRect){0,0,20,30};
     assert(book_layout_build_blocks("a\nimg\nb", 7, illustrated, 3, r, 10));
     assert(book_layout_page_count() == 3);
@@ -176,7 +178,7 @@ int main(void) {
     assert(!strcmp(drawn,"ab") && image_pixels == 500);
     // 占位命中与绘图边界一致，不读取像素；重复提示不改变文本偏移。
     // Placeholder hits match drawing bounds without loading pixels; repeat hints preserve text offsets.
-    illustrated[1].image = NULL; illustrated[1].image_src = "cover.jpg";
+    illustrated[1].plane = (img_plane_t){0}; illustrated[1].image_src = "cover.jpg";
     r = (EpdRect){40,24,604,1000};
     assert(book_layout_build_blocks("a\nimg\nb", 7, illustrated, 3, r, 48));
     size_t before_pages = book_layout_page_count();

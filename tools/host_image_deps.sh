@@ -11,6 +11,6 @@ for rp_prefix in /opt/homebrew /usr/local /usr; do
 done
 png_ready=1
 [ ${#png_flags[@]} -eq 0 ] && png_ready=0
-image_pipeline=(main/book/img_plane.c main/book/img_scale.c main/book/img_dither.c
-                main/book/img_decode.c main/book/img_png.c main/book/vendor/tjpgd.c)
+image_pipeline=(main/book/img_plane.c main/book/img_plane_build.c main/book/img_scale.c
+                main/book/img_dither.c main/book/img_decode.c main/book/img_png.c main/book/vendor/tjpgd.c)
 image_includes=(-Itools/book_layout_stubs -Itools/book_image_stubs)

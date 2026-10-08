@@ -108,7 +108,7 @@ int main(int argc,char** argv) {
     book_epub_t* book=NULL;assert(book_epub_open(argv[3],&book)==ESP_OK);
     html_text_t text={0};assert(book_epub_load(book,0,&text)==ESP_OK);
     size_t decoded=0,refs=0;
-    for(size_t i=0;i<text.count;++i){if(text.blocks[i].image)++decoded;if(text.blocks[i].image_src)++refs;}
+    for(size_t i=0;i<text.count;++i){if(text.blocks[i].plane.nib)++decoded;if(text.blocks[i].image_src)++refs;}
     assert(refs==7 && decoded==0);
     // 每次只解码明确请求的图片；失败不改正文与块表。/ Decode only the requested image; failures leave text and blocks intact.
     decoded=0;
@@ -117,7 +117,7 @@ int main(int argc,char** argv) {
         esp_err_t err=book_epub_load_image(book,0,text.blocks[i].image_src,&plane,604,1064);
         if(err==ESP_OK){++decoded;assert(plane.nib && plane.width==16 && plane.height==8);img_plane_free(&plane);}
         else assert(!plane.nib && !plane.width && !plane.height);
-        assert(!text.blocks[i].image && !text.blocks[i].image_repeated && !text.blocks[i].image_title);
+        assert(!text.blocks[i].plane.nib && !text.blocks[i].image_repeated && !text.blocks[i].image_title);
     }
     assert(decoded==2 && strstr(text.utf8,"before") && strstr(text.utf8,"after"));
     img_plane_t plane={0};
@@ -134,7 +134,7 @@ int main(int argc,char** argv) {
     img_plane_free(&plane);
     html_text_free(&text);
     assert(book_epub_load(book,1,&text)==ESP_OK && text.count==2);
-    for(size_t i=0;i<text.count;++i) assert(!text.blocks[i].image && text.blocks[i].image_repeated && text.blocks[i].image_first_chapter==0);
+    for(size_t i=0;i<text.count;++i) assert(!text.blocks[i].plane.nib && text.blocks[i].image_repeated && text.blocks[i].image_first_chapter==0);
     html_text_free(&text);
     // 标题前的图独立标记，标题后的图仍是普通图片；同资源引用沿用标记。
     // Mark the opening title image, retain ordinary images after the heading, and recognize the same resource elsewhere.

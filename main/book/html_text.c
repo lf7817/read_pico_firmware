@@ -48,7 +48,7 @@ void html_text_free(html_text_t* text) {
 
 void html_blocks_free(blk_t* blocks, size_t count) {
     if (!blocks) return;
-    for (size_t i = 0; i < count; ++i) { free(blocks[i].image_src); free(blocks[i].image); }
+    for (size_t i = 0; i < count; ++i) { free(blocks[i].image_src); img_plane_free(&blocks[i].plane); }
     free(blocks);
 }
 

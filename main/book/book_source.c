@@ -60,6 +60,22 @@ esp_err_t book_chapter_load_image(size_t i, const char *reference, img_plane_t *
     if (!s_epub) return ESP_ERR_NOT_SUPPORTED;
     return book_epub_load_image(s_epub, i, reference, out, max_width, max_height);
 }
+size_t book_chapter_prepare_images(size_t chapter, html_text_t* text, int max_width, int max_height,
+                                   size_t budget) {
+    if (!text || max_width <= 0 || max_height <= 0) return 0;
+    size_t used = 0;
+    for (size_t i = 0; i < text->count; ++i) {
+        if (!text->blocks[i].image_src || text->blocks[i].plane.nib) continue;
+        if (used >= budget) break;   // 预算用完，后面的图继续走占位 + 点按预览
+        img_plane_t plane = {0};
+        if (book_epub_load_image(s_epub, chapter, text->blocks[i].image_src, &plane, max_width,
+                                 max_height) != ESP_OK)
+            continue;
+        used += img_plane_bytes(plane.width, plane.height);
+        text->blocks[i].plane = plane;
+    }
+    return used;
+}
 uint32_t book_total_bytes(void) { return s_epub ? book_epub_total_bytes(s_epub) : s_book.total; }
 uint32_t book_chapter_byte_offset(size_t i) {
     return s_epub ? book_epub_chapter_byte_offset(s_epub, i) : i < s_book.count ? s_book.entries[i].offset : 0;

@@ -52,7 +52,7 @@ int main(int argc, char **argv) {
             assert(i ? offset > previous : offset == 0); previous = offset;
             assert(book_epub_load(book, i, &text) == ESP_OK);
             for (size_t b = 0; b < text.count; ++b) if (text.blocks[b].image_src) {
-                assert(!text.blocks[b].image);
+                assert(!text.blocks[b].plane.nib);
                 ++image_refs;
                 if (text.blocks[b].image_title) ++title_images;
                 if (text.blocks[b].image_repeated) {

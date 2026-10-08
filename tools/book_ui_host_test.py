@@ -115,13 +115,19 @@ static char* s_text;
 static int s_unsaved,s_px=48;
 static uint32_t s_file_size=1000;
 static size_t s_chapter,s_page;
-typedef struct {char* image_src;bool image_repeated;uint16_t image_first_chapter;bool image_title;} blk_t;
+typedef struct {uint8_t* nib;uint16_t width,height;} img_plane_t;
+static void img_plane_free(img_plane_t* p){free(p->nib);p->nib=NULL;p->width=p->height=0;}
+typedef struct {char* image_src;img_plane_t plane;bool image_repeated;uint16_t image_first_chapter;bool image_title;} blk_t;
 static blk_t* s_blocks;
 static size_t s_block_count;
 static bool s_image_open;
-typedef struct {uint8_t* nib;uint16_t width,height;} img_plane_t;
-static void img_plane_free(img_plane_t* p){free(p->nib);p->nib=NULL;p->width=p->height=0;}
 static img_plane_t s_image_plane;
+// 预览实际显示的平面：可能是块里预加载的那张，也可能是自己解出来的那张。
+// The plane the preview shows: either a block's preloaded one or the one it decoded.
+static const img_plane_t* s_image_view;
+typedef struct {blk_t* blocks;size_t count;} html_text_t;
+__attribute__((unused)) static size_t book_chapter_prepare_images(size_t chapter,html_text_t* text,int max_w,int max_h,size_t budget){
+    (void)chapter;(void)max_w;(void)max_h;(void)budget;(void)text;return 0;}
 static size_t s_image_block=SIZE_MAX;
 static const char* s_image_error;
 static char s_image_origin[224];
