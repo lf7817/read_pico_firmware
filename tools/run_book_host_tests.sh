@@ -54,4 +54,11 @@ gcc "${flags[@]}" -Itools/book_image_stubs "${png_flags[@]}" tools/img_png_host_
   main/book/img_png.c main/book/img_decode.c main/book/vendor/tjpgd.c -lpng \
   -o build/book-tests/img_png
 build/book-tests/img_png
-build/book-tests/img_png
+# img_plane 用堆跟踪桩量峰值，所以走 book_epub_stubs 的 esp_heap_caps.h（宏接管 malloc/free）。
+# img_plane measures its peak through the tracking shim, so it takes book_epub_stubs'
+# esp_heap_caps.h, which shadows malloc/free by macro.
+gcc "${flags[@]}" -DBOOK_HEAP_TRACK -Itools/book_epub_stubs -Itools/book_image_stubs \
+  -Itools/book_layout_stubs "${png_flags[@]}" tools/img_plane_host_test.c main/book/img_plane.c main/book/img_scale.c \
+  main/book/img_dither.c main/book/img_decode.c main/book/img_png.c main/book/vendor/tjpgd.c \
+  tools/book_heap_track.c -lpng -lz -o build/book-tests/img_plane
+build/book-tests/img_plane

@@ -49,6 +49,7 @@ idf_component_register(
         "book/img_scale.c"
         "book/img_decode.c"
         "book/img_png.c"
+        "book/img_plane.c"
         "book/vendor/tjpgd.c"
         "book/zip_reader.c"
         "book/html_text.c"

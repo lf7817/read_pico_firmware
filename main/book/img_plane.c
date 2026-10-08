@@ -1,0 +1,135 @@
+/*
+ * SPDX-FileCopyrightText: 2026 mindreset
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * 中文：把解码条带、整数加权缩小、blue noise 抖动串成一次加载期的顺序装配。
+ * English: Assembles decode strips, integer box downscaling and blue-noise dithering into one
+ * load-time pass.
+ *
+ * 冻结：全程不申请第二份整图 8-bit 平面；抖动坐标用目标屏幕坐标，与条带边界无关。
+ * Frozen: never allocates a second full 8-bit plane; the dither is keyed on target coordinates so
+ * strip boundaries cannot shift it.
+ */
+#include "img_plane.h"
+#include <stdlib.h>
+#include <string.h>
+#include "esp_heap_caps.h"
+#include "epdiy.h"
+#include "img_dither.h"
+#include "img_scale.h"
+
+#define PSRAM_CAPS (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+
+void img_plane_target(int src_w, int src_h, int max_w, int max_h, int* out_w, int* out_h) {
+    int w = src_w, h = src_h;
+    if (w > max_w) { h = (int)((int64_t)h * max_w / w); w = max_w; }
+    if (h > max_h) { w = (int)((int64_t)w * max_h / h); h = max_h; }
+    *out_w = w < 1 ? 1 : w;
+    *out_h = h < 1 ? 1 : h;
+}
+
+size_t img_plane_bytes(int width, int height) {
+    if (width <= 0 || height <= 0) return 0;
+    return ((size_t)width + 1) / 2 * (size_t)height;
+}
+
+uint8_t img_plane_get(const img_plane_t* p, int x, int y) {
+    if (!p || !p->nib || x < 0 || y < 0 || x >= p->width || y >= p->height) return 15;
+    uint8_t byte = p->nib[(size_t)y * ((p->width + 1) / 2) + x / 2];
+    return (uint8_t)((x & 1) ? (byte >> 4) : (byte & 0x0F));
+}
+
+void img_plane_set(img_plane_t* p, int x, int y, uint8_t code) {
+    if (!p || !p->nib || x < 0 || y < 0 || x >= p->width || y >= p->height) return;
+    uint8_t* byte = &p->nib[(size_t)y * ((p->width + 1) / 2) + x / 2];
+    code &= 0x0F;
+    *byte = (uint8_t)((x & 1) ? ((*byte & 0x0F) | (code << 4)) : ((*byte & 0xF0) | code));
+}
+
+void img_plane_free(img_plane_t* p) {
+    if (!p) return;
+    free(p->nib);
+    p->nib = NULL;
+    p->width = p->height = 0;
+}
+
+typedef struct {
+    img_box_scaler_t scaler;
+    img_plane_t* plane;
+    uint8_t* box_out;      // 缩放后的 8-bit 行 / scaled 8-bit rows
+    size_t box_out_bytes;
+    int target_w, target_h;
+    int rows;              // 已写进平面的行数 / rows already written into the plane
+} build_t;
+
+static bool collect_rows(void* ctx, const uint8_t* gray_rows, int row_count, int first_row, int width) {
+    (void)first_row;
+    build_t* b = (build_t*)ctx;
+    if (width != b->scaler.src_width) return false;
+    int emitted = img_box_push(&b->scaler, gray_rows, row_count, b->box_out, b->box_out_bytes);
+    if (img_box_emitted_rows(&b->scaler) < b->rows + emitted) return false;
+    for (int i = 0; i < emitted; ++i) {
+        int y = b->rows + i;
+        if (y >= b->target_h) return false;
+        const uint8_t* src = b->box_out + (size_t)i * b->target_w;
+        for (int x = 0; x < b->target_w; ++x)
+            img_plane_set(b->plane, x, y, img_dither_gray_to_4bpp(src[x], x, y));
+    }
+    b->rows += emitted;
+    return true;
+}
+
+bool img_plane_build(img_reader_t* r, img_format_t format, int src_w, int src_h, int max_w,
+                     int max_h, img_plane_t* out) {
+    if (out) { out->nib = NULL; out->width = out->height = 0; }
+    if (!r || !out || src_w <= 0 || src_h <= 0 || max_w <= 0 || max_h <= 0) return false;
+    int tw = 0, th = 0;
+    img_plane_target(src_w, src_h, max_w, max_h, &tw, &th);
+    // A0 实测 TJpgDec 只有 1/8 档真省时间，1/2 与 1/4 反而更慢，所以要么 1/1 要么 1/8。
+    // A0 measured that only 1/8 actually saves decode time, so the choice is 1/1 or 1/8.
+    int scale = format == IMG_FORMAT_JPEG && (src_w >> 3) >= tw && (src_h >> 3) >= th ? 3 : 0;
+    int dec_w = src_w >> scale, dec_h = src_h >> scale;
+    if (dec_w < tw || dec_h < th) return false;
+
+    build_t b = {0};
+    b.target_w = tw;
+    b.target_h = th;
+    size_t store_size = img_box_scaler_memory(tw);
+    uint8_t* store = heap_caps_malloc(store_size, PSRAM_CAPS);
+    uint8_t* strip = heap_caps_malloc((size_t)IMG_STRIP_ROWS * dec_w, PSRAM_CAPS);
+    uint8_t* work = format == IMG_FORMAT_JPEG ? heap_caps_malloc(IMG_JPEG_WORK_MIN, PSRAM_CAPS) : NULL;
+    b.plane = out;
+    b.box_out_bytes = (size_t)(IMG_STRIP_ROWS + 1) * tw;
+    b.box_out = heap_caps_malloc(b.box_out_bytes, PSRAM_CAPS);
+    out->nib = heap_caps_malloc(img_plane_bytes(tw, th), PSRAM_CAPS);
+    out->width = (uint16_t)tw;
+    out->height = (uint16_t)th;
+    bool ok = store && strip && b.box_out && out->nib && (format != IMG_FORMAT_JPEG || work) &&
+        img_box_scaler_init(&b.scaler, store, store_size, dec_w, dec_h, tw, th);
+    if (ok) {
+        int gw = 0, gh = 0;
+        if (format == IMG_FORMAT_JPEG) {
+            ok = img_decode_jpeg_strips(r, work, IMG_JPEG_WORK_MIN, strip,
+                                        (size_t)IMG_STRIP_ROWS * dec_w, (uint8_t)scale, collect_rows,
+                                        &b, &gw, &gh);
+        } else {
+            ok = img_decode_png_rows(r, collect_rows, &b, &gw, &gh);
+        }
+        // 解码器报的源尺寸必须和调用方量到的一致，否则缩放器是按错的形状累加的。
+        // The decoder must agree with the header the caller measured, or the scaler accumulated
+        // against the wrong shape.
+        ok = ok && gw == dec_w && gh == dec_h && b.rows == th && img_box_emitted_rows(&b.scaler) == th;
+    }
+    free(work);
+    free(strip);
+    free(b.box_out);
+    free(store);
+    if (!ok) img_plane_free(out);
+    return ok;
+}
+
+void img_plane_blit(const img_plane_t* p, uint8_t* fb, int x0, int y0) {
+    if (!p || !p->nib || !fb) return;
+    for (int y = 0; y < p->height; ++y) for (int x = 0; x < p->width; ++x)
+        epd_draw_pixel(x0 + x, y0 + y, (uint8_t)(img_plane_get(p, x, y) << 4), fb);
+}

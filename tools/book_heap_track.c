@@ -56,6 +56,7 @@ void book_heap_reset(void) {
     for (size_t i = 0; i < 131072; ++i) slots[i] = (allocation_t){0};
     peak = 0;
 }
+size_t book_heap_peak(void) { return peak; }
 void book_heap_report(void) {
     printf("parser heap peak=%zu bytes, remaining=%zu\n", peak, live);
     assert(!live);
