@@ -2,8 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # 用独立解码器校验生产代码生成的240px二维码。/ Independently decode production-generated 240px QR images.
 from pathlib import Path
-from PIL import Image
-import zxingcpp
+import sys
+
+try:
+    from PIL import Image
+    import zxingcpp
+except ImportError as missing:
+    # 缺解码依赖时这份校验跑不了；生成侧回归在 run_wifi_qr_host_test.sh 里，仍然必跑。
+    # Without a decoder this check cannot run; the generation regression lives in
+    # run_wifi_qr_host_test.sh and stays mandatory.
+    raise SystemExit(f"SKIP: needs {missing.name} (pip install pillow zxing-cpp) to decode the QR")
 
 samples = {
     "url-ap": "http://192.168.4.1",

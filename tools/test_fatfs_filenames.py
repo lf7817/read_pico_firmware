@@ -9,6 +9,10 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 IDF = Path(os.environ.get("IDF_PATH", "/opt/esp/idf"))
+if not (IDF / "components/fatfs/src/ff.c").exists():
+    # 没有 IDF_PATH 时这份回归编不起来：它编译的是真实 IDF FatFs 源。
+    # This regression compiles real IDF FatFs sources, so it cannot run without IDF_PATH.
+    raise SystemExit("SKIP: set IDF_PATH (run it inside the IDF environment, e.g. `eim shell`)")
 
 
 def main():
