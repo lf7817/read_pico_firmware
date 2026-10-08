@@ -39,7 +39,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='book-epub-') as temp:
         work = Path(temp)
         exe = work / 'test'
-        subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-g', '-fsanitize=address,undefined', '-DBOOK_HEAP_TRACK', '-Wl,--wrap=free',
+        subprocess.run(['cc', '-std=c11', '-Wall', '-Wextra', '-Werror', '-g', '-fsanitize=address,undefined', '-DBOOK_HEAP_TRACK',
                         '-I' + str(ROOT / 'tools/book_epub_stubs'), '-I' + str(ROOT / 'tools/zip_host_stubs'),
                         '-I' + str(ROOT / 'main/book'), str(ROOT / 'tools/book_epub_host_test.c'),
                         str(ROOT / 'main/book/book_epub.c'), str(ROOT / 'main/book/zip_reader.c'),

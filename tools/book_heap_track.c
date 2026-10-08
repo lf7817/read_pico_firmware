@@ -45,10 +45,11 @@ void *book_test_realloc(void *p, size_t n) {
     }
     return next;
 }
-void __real_free(void *p);
-void __wrap_free(void *p) {
-    if (p) { size_t i = slot(p); if (slots[i].ptr) remove_slot(i); }
-    __real_free(p);
+/* 由 stub 头的宏接管 free，而不是链接期 --wrap：macOS 的 ld 没有 --wrap。
+   The stub header shadows free via a macro, not link-time --wrap; macOS ld has no --wrap. */
+void book_test_free(void *p) {
+    if (p) { size_t i = slot(p); if (slots[i].ptr == p) remove_slot(i); }
+    free(p);
 }
 void book_heap_reset(void) {
     assert(!live);
