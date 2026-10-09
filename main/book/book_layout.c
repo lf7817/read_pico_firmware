@@ -50,17 +50,26 @@ static const blk_t* block_at(size_t off) {
 // 插图等比适配正文区域，不放大；整块换页，不切断图片。
 // Fit illustrations proportionally without upscaling; move whole images across page boundaries.
 static void image_size(const blk_t* block, int* width, int* height) {
-    // 平面在加载时就已经按正文盒缩放好，这里只兜住"分页盒后来变小了"的情况。
-    // The plane was already fitted to the body box while loading; this only covers the case
-    // where the pagination box has since become smaller.
-    *width = block->plane.width; *height = block->plane.height;
+    // 已加载就按平面算，未加载就按文件头量到的源尺寸算：两者必须给出同一个高度，
+    // 否则图一加载，页里的内容就会往下掉出边界。
+    // A loaded plane and an unloaded header must agree on the height, or loading an image would
+    // push the rest of the page past its bound.
+    if (!block->plane.nib && block->src_width) { *width = block->src_width; *height = block->src_height; }
+    else { *width = block->plane.width; *height = block->plane.height; }
     if (*width > s_rect.width) { *height = (int)((int64_t)*height * s_rect.width / *width); *width = s_rect.width; }
     if (*height > s_rect.height) { *width = (int)((int64_t)*width * s_rect.height / *height); *height = s_rect.height; }
     if (*width < 1) *width = 1;
     if (*height < 1) *height = 1;
 }
 static int row_height(const blk_t* block, int px) {
-    if (block && block->plane.nib) { int width, height; image_size(block, &width, &height); return height; }
+    // 已加载的平面按平面高度留位；没加载但量过头的按源比例留位；两者都要与 image_size 同源。
+    // A loaded plane reserves its own height; an unloaded but probed image reserves the header
+    // aspect. Both must agree with image_size, or loading would shift the page under the reader.
+    if (block && (block->plane.nib || (block->image_src && block->src_width))) {
+        int width, height;
+        image_size(block, &width, &height);
+        return height;
+    }
     if (block && block->image_src) return 2 * s_px < s_rect.height ? 2 * s_px : s_rect.height;
     return px + px / 2;
 }

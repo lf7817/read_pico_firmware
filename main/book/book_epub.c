@@ -613,17 +613,35 @@ esp_err_t book_epub_load(book_epub_t *book, size_t i, html_text_t *out) {
     }
     return ESP_OK;
 }
+static esp_err_t resolve_entry(book_epub_t *book, size_t i, const char *reference) {
+    const char *base = zip_entry_name(book->zip, book->chapters[i].zip_index);
+    char path[EPUB_PATH_CAP];
+    if (!base || !resolve_path(base, reference, path)) return ESP_ERR_NOT_SUPPORTED;
+    return zip_find(book->zip, path);
+}
+
+esp_err_t book_epub_probe_image(book_epub_t *book, size_t i, const char *reference,
+                                uint16_t *width, uint16_t *height) {
+    if (!book || i >= book->count || !reference || !*reference || !width || !height)
+        return ESP_ERR_INVALID_ARG;
+    *width = *height = 0;
+    int entry = resolve_entry(book, i, reference);
+    char *data; size_t size;
+    esp_err_t err = load_entry(book, entry, &data, &size);
+    if (err != ESP_OK) return err;
+    bool known = book_image_size((const uint8_t *)data, size, width, height);
+    free(data);
+    return known ? ESP_OK : ESP_ERR_INVALID_SIZE;
+}
+
 esp_err_t book_epub_load_image(book_epub_t *book, size_t i, const char *reference,
                                img_plane_t *out, int max_width, int max_height) {
     if (!out) return ESP_ERR_INVALID_ARG;
     img_plane_free(out);
     if (max_width <= 0 || max_height <= 0) return ESP_ERR_INVALID_ARG;
     if (!book || i >= book->count || !reference || !*reference) return ESP_ERR_INVALID_ARG;
-    const char *base = zip_entry_name(book->zip, book->chapters[i].zip_index);
-    char path[EPUB_PATH_CAP];
-    if (!base || !resolve_path(base, reference, path)) return ESP_ERR_NOT_SUPPORTED;
     char *data; size_t size;
-    esp_err_t err = load_entry(book, zip_find(book->zip, path), &data, &size);
+    esp_err_t err = load_entry(book, resolve_entry(book, i, reference), &data, &size);
     if (err != ESP_OK) return err;
     uint16_t source_w = 0, source_h = 0;
     bool interlaced = false;
@@ -635,14 +653,12 @@ esp_err_t book_epub_load_image(book_epub_t *book, size_t i, const char *referenc
         return interlaced ? ESP_ERR_NOT_SUPPORTED : ESP_ERR_INVALID_SIZE;
     }
     img_format_t format = (size > 3 && !memcmp(data, "\x89PNG", 4)) ? IMG_FORMAT_PNG : IMG_FORMAT_JPEG;
-    // 文档化的插图范围照旧：PNG 与渐进 JPEG 1M 像素、基线 JPEG 16M、单边 8192。条带路径本身
-    // 不需要这些（它按行流过去），但产品范围不能因为换了实现就悄悄放宽。
-    // The documented illustration scope stays put: 1M pixels for PNG and progressive JPEG, 16M for
-    // baseline JPEG, 8192 per side. The strip path would not need this on its own, but swapping the
-    // implementation must not silently widen what the product claims to support.
+    // 条带路径能处理到 16M 像素；超出的一律先按整图兜底试一次，兜底自己会拒绝超过 1M 像素的源。
+    // The strip path handles up to 16M pixels; anything past that still tries the whole-image
+    // fallback, which refuses sources over 1M pixels on its own.
     uint64_t pixels = (uint64_t)source_w * source_h;
-    uint32_t ceiling = format == IMG_FORMAT_PNG ? BOOK_IMAGE_MAX_PIXELS_OTHER : BOOK_IMAGE_MAX_PIXELS_JPEG;
-    if (pixels > ceiling || source_w > BOOK_IMAGE_MAX_SIDE || source_h > BOOK_IMAGE_MAX_SIDE) {
+    if (pixels > BOOK_IMAGE_MAX_PIXELS_STRIP || source_w > BOOK_IMAGE_MAX_SIDE ||
+        source_h > BOOK_IMAGE_MAX_SIDE) {
         free(data);
         return ESP_ERR_INVALID_SIZE;
     }

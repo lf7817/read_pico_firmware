@@ -34,13 +34,18 @@ esp_err_t book_chapter_load_blocks(size_t i, html_text_t *out);
 /// an empty plane. Unsupported for TXT.
 esp_err_t book_chapter_load_image(size_t i, const char *reference, img_plane_t *out, int max_width,
                                   int max_height);
-/// 分页之前把本章插图按预算解成 4bpp 平面；预算用完后的图保持占位高度与点按预览。
-/// 返回已占用的平面字节数。TXT 没有图片，直接返回 0。
-/// Decode chapter illustrations into 4bpp planes before pagination, up to a byte budget; images
-/// past the budget keep the placeholder height and the tap-to-preview path. Returns plane bytes
-/// used. TXT has no images and returns 0.
-size_t book_chapter_prepare_images(size_t chapter, html_text_t* text, int max_width, int max_height,
-                                   size_t budget);
+/// 分页之前只读每张图的文件头，把源尺寸写回块里，让分页能按真实比例留位。
+/// 只 inflate 不解码，返回拿到尺寸的图数。TXT 没有图片，返回 0。
+/// Read only each image's header before pagination so page breaks reserve the real aspect. This
+/// inflates without decoding, and returns how many sizes were read. TXT has no images and is 0.
+size_t book_chapter_probe_images(size_t chapter, html_text_t* text);
+/// 把偏移落在 [from,to) 的图解成不超过 max 的 4bpp 平面，最多用 budget 字节。
+/// 返回已占用的平面字节数。已经解好的图直接计入预算，不重复解码。
+/// Decode images whose offset falls in [from,to) into planes no larger than max, up to a byte
+/// budget, and return the plane bytes used. Already-loaded images count towards the budget and are
+/// not decoded twice.
+size_t book_chapter_prepare_images(size_t chapter, html_text_t* text, size_t from, size_t to,
+                                   int max_width, int max_height, size_t budget);
 /// TXT 为源文件字节；EPUB 为 spine 原始 HTML 未压缩累计字节，不是 ZIP 文件大小。
 /// TXT uses source-file bytes; EPUB uses cumulative uncompressed spine HTML bytes, not ZIP file size.
 uint32_t book_total_bytes(void);

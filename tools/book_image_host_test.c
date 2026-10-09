@@ -115,11 +115,23 @@ int main(int argc,char** argv) {
     for(size_t i=0;i<text.count;++i) if(text.blocks[i].image_src) {
         img_plane_t plane={0};
         esp_err_t err=book_epub_load_image(book,0,text.blocks[i].image_src,&plane,604,1064);
-        if(err==ESP_OK){++decoded;assert(plane.nib && plane.width==16 && plane.height==8);img_plane_free(&plane);}
+        // 16x8 的夹具原样出图；1025x1024 的 huge.png 现在按条带路径缩到盒子里
+        // （PNG 走 libpng 逐行，内存随源宽而不是源高，所以不再受旧的 1M 像素限制）。
+        // The 16x8 fixtures come out as-is; huge.png (1025x1024) now scales into the box, because
+        // the libpng row path costs memory per source column, not per source pixel, so the old
+        // 1M-pixel PNG ceiling no longer applies.
+        bool huge = strstr(text.blocks[i].image_src,"huge.png")!=NULL;
+        if(err==ESP_OK){
+            ++decoded;
+            assert(plane.nib);
+            if (huge) { assert(plane.width==604 && plane.height==603); }
+            else assert(plane.width==16 && plane.height==8);
+            img_plane_free(&plane);
+        }
         else assert(!plane.nib && !plane.width && !plane.height);
         assert(!text.blocks[i].plane.nib && !text.blocks[i].image_repeated && !text.blocks[i].image_title);
     }
-    assert(decoded==2 && strstr(text.utf8,"before") && strstr(text.utf8,"after"));
+    assert(decoded==3 && strstr(text.utf8,"before") && strstr(text.utf8,"after"));
     img_plane_t plane={0};
     image_fail_after=0;
     assert(book_epub_load_image(book,0,"../images/gray.jpg",&plane,604,1064)!=ESP_OK && !plane.nib);

@@ -5,6 +5,11 @@ User-visible changes by date and author; Git retains implementation history. See
 
 ## 2026-10-09 · lf7817
 
+- EPUB 正文插图现在直接画进页面里（含图文混排），不再是只有"点击查看图片"框；每页按窗口预加载当前页前后共四页的图，超出内存窗口的仍显示占位框并可点按预览。
+  EPUB body illustrations now render inside the page (mixed text and image), instead of only a "tap to view" box; a page window of four pages is preloaded, and images outside that window keep the placeholder box and stay tappable.
+- 插图范围放宽：PNG 改按行流式解码，与基线 JPEG 同为原图最多 16M 像素、单边 8192（原先是 1M 像素，所以大图会提示"超出大小限制"）。渐进 JPEG 仍走整图兜底，保持 1M 像素上限。
+  Wider illustration scope: PNG now decodes row by row and shares baseline JPEG's ceiling of 16M source pixels and 8192 per side (it used to be 1M, which is why large PNGs reported "over the size limit"). Progressive JPEG still falls back to a whole-image decode and keeps the 1M limit.
+
 - 插图：预览图改在加载期完成缩放与灰阶映射（整数加权面积平均 + blue noise 抖动到签字 6 档），替代原来在绘制期做的最近邻放大与 16 档截断；支持的图片范围不变（PNG 与渐进 JPEG 1M 像素、基线 JPEG 16M 像素、单边 8192）。
   Illustration previews now finish scaling and gray mapping while loading (integer weighted area averaging plus blue-noise dithering onto the six signed-off levels) instead of nearest-neighbour enlargement and 16-level truncation at paint time. The supported image scope is unchanged (1M pixels for PNG and progressive JPEG, 16M for baseline JPEG, 8192 per side).
 

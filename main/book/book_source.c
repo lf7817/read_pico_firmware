@@ -60,13 +60,38 @@ esp_err_t book_chapter_load_image(size_t i, const char *reference, img_plane_t *
     if (!s_epub) return ESP_ERR_NOT_SUPPORTED;
     return book_epub_load_image(s_epub, i, reference, out, max_width, max_height);
 }
-size_t book_chapter_prepare_images(size_t chapter, html_text_t* text, int max_width, int max_height,
-                                   size_t budget) {
-    if (!text || max_width <= 0 || max_height <= 0) return 0;
+size_t book_chapter_probe_images(size_t chapter, html_text_t* text) {
+    if (!text || !s_epub) return 0;
+    size_t known = 0;
+    for (size_t i = 0; i < text->count; ++i) {
+        if (!text->blocks[i].image_src || text->blocks[i].src_width) continue;
+        uint16_t w = 0, h = 0;
+        if (book_epub_probe_image(s_epub, chapter, text->blocks[i].image_src, &w, &h) == ESP_OK) {
+            text->blocks[i].src_width = w;
+            text->blocks[i].src_height = h;
+            ++known;
+        }
+    }
+    return known;
+}
+size_t book_chapter_prepare_images(size_t chapter, html_text_t* text, size_t from, size_t to,
+                                   int max_width, int max_height, size_t budget) {
+    if (!text || !s_epub || max_width <= 0 || max_height <= 0 || to <= from) return 0;
     size_t used = 0;
     for (size_t i = 0; i < text->count; ++i) {
-        if (!text->blocks[i].image_src || text->blocks[i].plane.nib) continue;
-        if (used >= budget) break;   // 预算用完，后面的图继续走占位 + 点按预览
+        if (!text->blocks[i].image_src) continue;
+        if (text->blocks[i].offset < from || text->blocks[i].offset >= to) {
+            // 窗口之外的平面在这里释放，所以读完一章不会把每页的图都留在 PSRAM。
+            // Planes outside the window are released here, so reading through a chapter does not
+            // keep every page's image resident in PSRAM.
+            img_plane_free(&text->blocks[i].plane);
+            continue;
+        }
+        if (text->blocks[i].plane.nib) {
+            used += img_plane_bytes(text->blocks[i].plane.width, text->blocks[i].plane.height);
+            continue;
+        }
+        if (used >= budget) continue;   // 预算用完，这一页剩下的图继续走占位 + 点按预览
         img_plane_t plane = {0};
         if (book_epub_load_image(s_epub, chapter, text->blocks[i].image_src, &plane, max_width,
                                  max_height) != ESP_OK)

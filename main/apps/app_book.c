@@ -123,10 +123,14 @@ static char s_resume_path[BOOK_STORE_PATH_MAX], s_resume_name[256];
 static char s_message[128], s_storage[128], s_path[BOOK_STORE_PATH_MAX], s_title[128];
 static char s_font_path[192];
 static char* s_text;
-// 每章预加载插图的平面总量上限；超出的图保持占位高度与点按预览。
-// Per-chapter ceiling for preloaded illustration planes; images past it keep the
-// placeholder height and the tap-to-preview path.
-#define BOOK_INLINE_IMAGE_BYTES (1024U * 1024U)
+// 图片平面按"页窗口"预加载，不按整章：整章预加载实测 5.9~10.1 s 才能翻开第一章。
+// 窗口是当前页往前一页、往后两页；窗口外的平面直接释放。
+// Planes are preloaded per page window, not per chapter: a whole-chapter preload
+// measured 5.9-10.1 s before the first page appeared. The window is one page back and
+// two forward; planes outside it are freed.
+#define BOOK_IMAGE_WINDOW_BEFORE 1
+#define BOOK_IMAGE_WINDOW_AFTER 2
+#define BOOK_IMAGE_WINDOW_BYTES (768U * 1024U)
 static blk_t* s_blocks;
 static size_t s_block_count;
 static size_t s_text_len, s_chapter, s_page;
@@ -717,6 +721,35 @@ static EpdRect image_preview_box(void) {
     int top = UI_CONTENT_TOP + (s_image_origin[0] ? UI_PX_CAPTION + UI_GAP : 0);
     return (EpdRect){UI_MARGIN, top, ui_content_width(), UI_CONTENT_BOTTOM - top};
 }
+static void image_window(size_t page, size_t* from, size_t* to) {
+    size_t pages = book_layout_page_count();
+    if (!pages) { *from = *to = 0; return; }
+    size_t lo = page >= BOOK_IMAGE_WINDOW_BEFORE ? page - BOOK_IMAGE_WINDOW_BEFORE : 0;
+    size_t hi = page + BOOK_IMAGE_WINDOW_AFTER + 1 < pages ? page + BOOK_IMAGE_WINDOW_AFTER + 1 : pages;
+    *from = book_layout_page_start_offset(lo);
+    *to = hi >= pages ? s_text_len : book_layout_page_start_offset(hi);
+}
+
+// 在提交某一页时调用（不能在 render 里：解码不是绘制）。窗口外的平面顺手释放，
+// 所以翻过一章不会把每页的图都留在 PSRAM 里。
+// Called when a page is committed, never from render, which must stay pure painting. Planes outside
+// the window are freed here, so reading through a chapter does not keep every page's image in PSRAM.
+static void prepare_images(app_ctx_t* ctx, size_t page) {
+    (void)ctx;
+    if (!s_text || s_view != READING || !s_block_count) return;
+    size_t from = 0, to = 0;
+    image_window(page, &from, &to);
+    if (to <= from) return;
+    EpdRect body = body_rect();
+    lock_draw();
+    size_t used = book_chapter_prepare_images(s_chapter, &(html_text_t){s_text, s_text_len, s_blocks, s_block_count},
+                                              from, to, body.width, body.height,
+                                              BOOK_IMAGE_WINDOW_BYTES);
+    unlock_draw();
+    invalidate_prep();
+    ESP_LOGI(TAG, "images page=%u window=%u..%u used=%u KiB", (unsigned)page, (unsigned)from, (unsigned)to,
+             (unsigned)(used / 1024));
+}
 static void draw_image(uint8_t* fb) {
     ui_clear_page(fb);
     bool title_image = s_image_block < s_block_count && s_blocks[s_image_block].image_title;
@@ -960,17 +993,17 @@ static bool load_chapter(app_ctx_t* ctx, size_t chapter, size_t offset, bool las
         copy_text(s_message, sizeof(s_message), book_error_message(err));
         return false;
     }
+    // 分页之前只读每张图的文件头：留位要的是比例，不是像素。整章预解码实测要把翻开第一章
+    // 拖到 6~10 秒，所以平面改成分页之后按页窗口建。
+    // Read only the headers before pagination: reserving space needs the aspect, not the
+    // pixels. Predecoding a whole chapter measured 6-10 s before page one appeared, so planes
+    // are built per page window after pagination instead.
     lock_draw();
     invalidate_prep();
-    // 平面必须在分页之前建好：分页要按真实高度留位，边翻边补会让页码在读者眼下变动。
-    // Planes have to exist before pagination: page breaks reserve their real height, and filling
-    // them in while reading would move page numbers under the reader.
-    int64_t images_started = esp_timer_get_time();
-    EpdRect body = body_rect();
-    size_t image_bytes = book_chapter_prepare_images(chapter, &loaded, body.width, body.height,
-                                                     BOOK_INLINE_IMAGE_BYTES);
-    ESP_LOGI(TAG, "chapter images: %u KiB in %lld ms", (unsigned)(image_bytes / 1024),
-             (esp_timer_get_time() - images_started) / 1000);
+    int64_t probe_started = esp_timer_get_time();
+    size_t probed = book_chapter_probe_images(chapter, &loaded);
+    if (probed) ESP_LOGI(TAG, "probed %u images in %lld ms", (unsigned)probed,
+                          (esp_timer_get_time() - probe_started) / 1000);
     bool ok = book_layout_begin_blocks(loaded.utf8, loaded.len, loaded.blocks, loaded.count, body_rect(), s_px);
     // 先完成续读页；其余页由 tick 分批排版，上一章末页仍须定位到末尾。
     // Finish the resume page first; ticks paginate the rest, while previous-chapter navigation needs its end.
@@ -1003,6 +1036,7 @@ static bool load_chapter(app_ctx_t* ctx, size_t chapter, size_t offset, bool las
     copy_text(s_font_path, sizeof(s_font_path), ttf_font_path());
     s_message[0] = 0;
     unlock_draw();
+    prepare_images(ctx, s_page);
     return true;
 }
 static bool open_book(app_ctx_t* ctx, const char* path) {
@@ -1327,6 +1361,7 @@ static app_redraw_t turn_page(app_ctx_t* ctx, int dir) {
     if (s_unsaved < 8) ++s_unsaved;
     if (s_unsaved >= 8 && !s_save_failed) save_progress();
     ESP_LOGI(TAG, "turn chapter=%u page=%u/%u pct=%u", (unsigned)s_chapter, (unsigned)s_page + 1, (unsigned)book_layout_page_count(), percent(s_page));
+    prepare_images(ctx, s_page);
     return paint_reading(ctx, MODE_GL16);
 }
 static app_redraw_t resize_text(app_ctx_t* ctx, int dir) {

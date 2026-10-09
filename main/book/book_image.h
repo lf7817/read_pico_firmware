@@ -18,12 +18,16 @@
 bool book_image_decode(const uint8_t* data, size_t len, size_t budget,
                        uint8_t** pixels, uint16_t* width, uint16_t* height);
 
-/// 源像素上限：基线 JPEG 16M，其余 1M；单边不超过 8192。这些是文档化的插图范围，
-/// 两条解码入口（book_image_decode 与 img_plane_build 的调用方）共用同一组数字。
-/// Source pixel ceilings: 16M for baseline JPEG, 1M otherwise, 8192 per side. These are the
-/// documented illustration limits, shared by both decode entries.
+/// 源像素上限，按"哪条路径在解"分档，不是按文件类型拍脑袋：
+/// 条带路径（基线 JPEG 走 TJpgDec、PNG 走 libpng 逐行）内存与源宽成正比、与源高无关，
+/// 所以两者都用 16M 像素 / 单边 8192；只有整图兜底（渐进 JPEG 走 stb）需要一次装下全图，
+/// 那一条才是 1M 像素。
+/// Source ceilings split by which path decodes, not by file extension guesswork. The strip paths
+/// (baseline JPEG through TJpgDec, PNG through libpng row-by-row) scale with source width only,
+/// so both take 16M pixels and 8192 per side. Only the whole-image fallback (progressive JPEG via
+/// stb) has to hold the entire raster, and that one stays at 1M pixels.
 #define BOOK_IMAGE_MAX_SIDE 8192u
-#define BOOK_IMAGE_MAX_PIXELS_JPEG (16u * 1024u * 1024u)
+#define BOOK_IMAGE_MAX_PIXELS_STRIP (16u * 1024u * 1024u)
 #define BOOK_IMAGE_MAX_PIXELS_OTHER (1024u * 1024u)
 
 /// 只读文件头拿源尺寸，不分配内存，可在排版期调用。

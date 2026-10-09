@@ -26,6 +26,11 @@ size_t book_epub_chapter_count(const book_epub_t *book);
 esp_err_t book_epub_chapter_title(const book_epub_t *book, size_t index, char *buf, size_t cap);
 /// 加载 UTF-8、标题/段落及图片引用，不解码图片；调用方 html_text_free。/ Load UTF-8, styled blocks and image references without decoding images; caller uses html_text_free.
 esp_err_t book_epub_load(book_epub_t *book, size_t index, html_text_t *out);
+/// 只读单幅本地图片的文件头拿源尺寸，用于分页留位；不解码也不留平面。
+/// Read only one local image's header for its source size, to reserve page space; no decode and no
+/// plane is kept.
+esp_err_t book_epub_probe_image(book_epub_t *book, size_t index, const char *reference,
+                                uint16_t *width, uint16_t *height);
 /// 明确请求后把本章单幅本地图片解成不超过 max 的 4bpp 平面；失败平面为空，不修改正文或分页。
 /// Decode one local image on explicit request into a 4bpp plane no larger than max; a failure
 /// leaves an empty plane, and text and pagination stay unchanged.

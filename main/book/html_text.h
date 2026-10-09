@@ -24,6 +24,8 @@ typedef struct {
     bool heading; ///< h1–h3 标题块 / h1-h3 heading block
     char* image_src; ///< 图片引用，块表持有；缺失时保持文字占位 / Owned image reference; absent references retain text placeholders
     img_plane_t plane; ///< 模块持有的 4bpp 平面，nib 为 NULL 时绘制占位 / Owned 4bpp plane; an empty one renders the placeholder
+    uint16_t src_width, src_height; ///< 只读文件头拿到的源尺寸，分页用它留位；0 表示未知
+                                    // Source size from the header alone; it reserves the page space. 0 means unknown
     uint16_t image_first_chapter; ///< 已读章节中同路径图片最早的零基序号 / Earliest zero-based visited chapter containing this image path
     bool image_title; ///< 章首标题前的图片或同资源引用，独立提示 / Image before an opening heading, or the same resource elsewhere, shown separately
     bool image_repeated; ///< 先前已读章节出现过同路径图片 / The same image path appeared in an earlier visited chapter
