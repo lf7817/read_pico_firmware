@@ -35,6 +35,7 @@ idf.py build
 | `main/app/app_config.h` | 均衡 / ALL_DU 刷新档位。/ Refresh profile. |
 | `main/ui/` | `ui_kit` 排版常量与绘制原语；`ui_menu` 两层菜单。页面互不引用。/ Shared drawing; pages do not include each other. |
 | `main/font/` | stb_truetype 字形缓存。`fallback.h` 是生成位图，勿手改。/ Glyph cache. Do not edit `fallback.h` by hand. |
+| `main/book/` | TXT / EPUB 书源、分页与图像管线。图像侧 `img_decode`（条带）→ `img_scale`（加权 box）→ `img_dither`（6 档 blue noise）→ `img_plane`（4bpp 存储与搬运）/`img_plane_build`（装配）→ `thumb_cache`。`blk_t.plane` 由 app 层按页窗口填充，`render` 只搬运不解码。/ TXT and EPUB source, pagination and the image pipeline: strip decode → weighted box → blue-noise dither → 4bpp plane → assembly → thumbnail cache. The app layer fills `blk_t.plane` a page window at a time; `render` only moves planes, never decodes. |
 | `main/factory/` | 设备功能自检与出厂 VCOM 标定。/ Device self-test and factory VCOM. |
 | `main/display.*` `sleep.*` `settings.*` | 刷屏封装、睡眠/锁屏、NVS 设置。/ Present helpers, sleep/lock, NVS. |
 | `components/read_pico/` | 板级 BSP：I2C、EPD 板定义与扫描时序、TF 卡、蜂鸣器、flash HPM。/ Board BSP. |
@@ -152,7 +153,7 @@ A `冻结 / Frozen:` block is a decision, not a hint. Change the behavior only a
 - 不要写 SY7636A 的 VCOM / VLDO / 放电 / 延时 / VCOMCTL。电源页只读。/ Do not write SY7636A VCOM / VLDO / discharge / delay / VCOMCTL. Power page is read-only.
 - `sdkconfig.defaults` 的 120 MHz 时序依赖真机 Zbit flash。覆盖 HPM 表见 `read_pico_flash_hpm.c`。/ 120 MHz timing needs the onboard Zbit part. HPM override is `read_pico_flash_hpm.c`.
 - 不要改 `components/epdiy/**` 来“整理注释”。/ Do not touch `components/epdiy/**` for comment cleanup.
-- 不要手改 `main/font/fallback.h`、`main/font/stb_truetype.h`、`components/e0470_epaper_waveform/waveforms/*.h`。/ Do not hand-edit generated or vendored tables.
+- 不要手改 `main/font/fallback.h`、`main/font/stb_truetype.h`、`components/e0470_epaper_waveform/waveforms/*.h`、`main/assets/blue_noise_64.h`（由 `tools/gen_blue_noise.py` 生成）。/ Do not hand-edit generated or vendored tables, including the blue-noise threshold map.
 - 不改 UI 字面量或日志字符串，除非任务明确要求。/ Do not change UI strings or log text unless asked.
 
 ## 注释规范 / Comment style

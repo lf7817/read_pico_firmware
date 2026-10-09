@@ -157,6 +157,9 @@ AP と既存 WiFi の両モードで転送ページの QR コードを表示し�
   本ボードの LCD 経路に合わせて機能を絞ったフォークです。LGPL-3.0-or-later。
   変更内容は [components/epdiy/LICENSE](components/epdiy/LICENSE) に記載しています。
 - [stb_truetype](https://github.com/nothings/stb)：グリフのラスタライズ。パブリックドメイン。
+- [stb_image](https://github.com/nothings/stb/blob/master/stb_image.h): EPUB 挿絵のプログレッシブ JPEG・PNG フォールバック復号（MIT / パブリックドメイン）、[main/book/vendor](main/book/vendor/README.md) に同梱。
+- [TJpgDec](http://elm-chan.org/fsw/tjpgd/00index.html): ベースライン JPEG のストリップ復号（ChaN ライセンス）、[main/book/vendor](main/book/vendor/README.md) に同梱し、現地での明度飽和修正 1 件をそちらに明記。
+- [libpng](http://www.libpng.org/pub/png/libpng.html) と [zlib](https://www.zlib.net/)（[espressif/libpng](https://github.com/espressif/idf-extra-components/tree/master/libpng) 経由）: EPUB 挿絵の行単位 PNG 復号。
 - [pwm_audio](https://github.com/espressif/esp-iot-solution/tree/master/components/audio/pwm_audio)：
   Espressif の LEDC PWM オーディオ。機能を絞ったコピーを Apache-2.0 で使用しています。
   [components/pwm_audio/LICENSE](components/pwm_audio/LICENSE) を参照してください。

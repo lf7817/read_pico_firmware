@@ -153,6 +153,9 @@ AP 与已有 WiFi 均提供传书网页二维码；热点页可切换连接 WiFi
   LCD 路径裁剪的 fork，LGPL-3.0-or-later，改动清单见
   [components/epdiy/LICENSE](components/epdiy/LICENSE)。
 - [stb_truetype](https://github.com/nothings/stb)：字形光栅化，公共领域。
+- [stb_image](https://github.com/nothings/stb/blob/master/stb_image.h)：EPUB 插图的渐进 JPEG 与 PNG 兜底解码，MIT/公共领域，vendor 在 [main/book/vendor](main/book/vendor/README.md)。
+- [TJpgDec](http://elm-chan.org/fsw/tjpgd/00index.html)：基线 JPEG 条带解码器，ChaN 许可，vendor 在 [main/book/vendor](main/book/vendor/README.md)，其中一处本地饱和修补在该文件说明里列出。
+- [libpng](http://www.libpng.org/pub/png/libpng.html) 与 [zlib](https://www.zlib.net/)，经 [espressif/libpng](https://github.com/espressif/idf-extra-components/tree/master/libpng) 引入：EPUB 插图的逐行 PNG 解码。
 - [pwm_audio](https://github.com/espressif/esp-iot-solution/tree/master/components/audio/pwm_audio)：
   Espressif LEDC PWM 音频。本仓库为裁剪副本，Apache-2.0，见
   [components/pwm_audio/LICENSE](components/pwm_audio/LICENSE)。

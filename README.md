@@ -161,6 +161,9 @@ See [Changelog](docs/CHANGELOG.md) for feature changes. Offline pinyin data come
   trimmed fork for the board's LCD path, licensed under LGPL-3.0-or-later.
   Local changes are listed in [components/epdiy/LICENSE](components/epdiy/LICENSE).
 - [stb_truetype](https://github.com/nothings/stb): glyph rasterization, public domain.
+- [stb_image](https://github.com/nothings/stb/blob/master/stb_image.h): progressive-JPEG and PNG fallback for EPUB illustrations, MIT/public domain, vendored in [main/book/vendor](main/book/vendor/README.md).
+- [TJpgDec](http://elm-chan.org/fsw/tjpgd/00index.html): baseline-JPEG strip decoder, ChaN's license, vendored in [main/book/vendor](main/book/vendor/README.md) with one local saturation fix listed there.
+- [libpng](http://www.libpng.org/pub/png/libpng.html) and [zlib](https://www.zlib.net/), via [espressif/libpng](https://github.com/espressif/idf-extra-components/tree/master/libpng): row-wise PNG decoding for EPUB illustrations.
 - [pwm_audio](https://github.com/espressif/esp-iot-solution/tree/master/components/audio/pwm_audio):
   Espressif LEDC PWM audio, trimmed copy, Apache-2.0. See
   [components/pwm_audio/LICENSE](components/pwm_audio/LICENSE).
